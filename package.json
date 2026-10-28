@@ -7,9 +7,10 @@
   "scripts": {
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
-    "test": "node scripts/smoke-scale.mjs && node scripts/smoke-world.mjs && node scripts/smoke-jobs.mjs && node scripts/smoke-gear.mjs && node scripts/smoke.mjs && node scripts/smoke-party.mjs && node scripts/smoke-dungeon.mjs && node scripts/smoke-frozen.mjs && node scripts/smoke-trade.mjs && node scripts/smoke-emote.mjs"
+    "test": "node scripts/test-store.mjs && node scripts/smoke-scale.mjs && node scripts/smoke-world.mjs && node scripts/smoke-jobs.mjs && node scripts/smoke-gear.mjs && node scripts/smoke.mjs && node scripts/smoke-party.mjs && node scripts/smoke-dungeon.mjs && node scripts/smoke-frozen.mjs && node scripts/smoke-trade.mjs && node scripts/smoke-emote.mjs && node scripts/smoke-persist.mjs"
   },
   "dependencies": {
+    "pg": "^8.23.1",
     "ws": "^8.18.0"
   },
   "engines": {

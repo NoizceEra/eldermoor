@@ -1,4 +1,5 @@
 // Eldermoor authoritative game server: HTTP (static client) + WebSocket (game).
+import { openStore } from './store.js';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -208,23 +209,16 @@ function shopStock(lvl, tier) {
 const SHOP_BY = new Map([[2, SHOP], [10, shopStock(22, 2)], [13, shopStock(32, 2)], [16, shopStock(44, 3)]]);
 
 // ---------------------------------------------------------------- persistence
-let saves = {};
-try { saves = JSON.parse(fs.readFileSync(SAVE_FILE, 'utf8')); } catch { /* fresh world */ }
-let savesDirty = false;
-function writeSaves() {
-  if (!savesDirty) return;
-  savesDirty = false;
-  fs.mkdirSync(path.dirname(SAVE_FILE), { recursive: true });
-  const tmp = SAVE_FILE + '.tmp';
-  fs.writeFileSync(tmp, JSON.stringify(saves));
-  fs.renameSync(tmp, SAVE_FILE);
-}
+const store = await openStore({ file: SAVE_FILE });
+const saves = store.loaded;
+function writeSaves() { store.flush(); }
 function savePlayer(p) {
-  saves[p.name.toLowerCase()] = {
+  const k = p.name.toLowerCase();
+  saves[k] = {
     v: 3, look: p.look, name: p.name, salt: p.salt, hash: p.hash, job: p.job, jobs: p.jobs, attr: p.attr, points: p.points, bar: p.bar, lvl: p.lvl, xp: p.xp, gold: p.gold,
     inv: p.inv, eq: p.eq, quest: p.quest, x: (p.z && p.z.kind !== 'world' ? p.ret : p).x, y: (p.z && p.z.kind !== 'world' ? p.ret : p).y, hp: p.hp,
   };
-  savesDirty = true;
+  store.put(k, saves[k]);
 }
 // Old saves are upgraded in steps: v1 (class + level) -> v2 (jobs/attributes) -> v3 (11 gear slots + looks).
 function migrateItem(it) {
@@ -1627,7 +1621,7 @@ const server = http.createServer((req, res) => {
   if (url === '/') url = '/client/index.html';
   if (url === '/api/status') {
     res.writeHead(200, { 'content-type': 'application/json' });
-    return res.end(JSON.stringify({ name: 'eldermoor', online: players.size, parties: parties.size, instances: instances.size, trades: trades.size, mobs: liveMobs(overworld).length, awake: awakeMobs, tickMs: Math.round(tickMs * 100) / 100, uptime: Math.round(process.uptime()) }));
+    return res.end(JSON.stringify({ name: 'eldermoor', online: players.size, parties: parties.size, instances: instances.size, trades: trades.size, mobs: liveMobs(overworld).length, awake: awakeMobs, tickMs: Math.round(tickMs * 100) / 100, uptime: Math.round(process.uptime()), store: store.kind, storeOk: store.ok }));
   }
   if (!url.startsWith('/client/') && !url.startsWith('/shared/')) { res.writeHead(404); return res.end('not found'); }
   const file = path.join(ROOT, url);
@@ -1648,7 +1642,14 @@ wss.on('connection', (ws) => {
 populate();
 setInterval(tick, TICK_MS);
 setInterval(() => { for (const p of players.values()) savePlayer(p); writeSaves(); }, 20000);
-const shutdown = () => { for (const p of players.values()) savePlayer(p); writeSaves(); process.exit(0); };
+let shuttingDown = false;
+const shutdown = async () => {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  for (const p of players.values()) savePlayer(p);
+  await store.close();
+  process.exit(0);
+};
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 server.listen(PORT, () => console.log(`Eldermoor listening on http://localhost:${PORT}  (${overworld.mobs.size} monsters)`));
