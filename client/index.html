@@ -20,6 +20,8 @@
   <form id="loginForm" class="panel">
     <div class="classes" id="classes"></div>
     <div class="classDesc" id="classDesc"></div>
+    <div class="creator"><canvas id="prev" width="16" height="16"></canvas><div class="lookrows" id="lookRows"></div></div>
+    <div class="btnrow"><button type="button" id="turn">Turn</button><button type="button" id="rnd">Randomize</button></div>
     <label>Hero name <input id="name" maxlength="14" autocomplete="off" placeholder="3-14 letters" required></label>
     <label>Secret word <input id="pass" type="password" maxlength="40" placeholder="protects your hero"></label>
     <button id="enter" type="submit">ENTER THE REALM</button>
@@ -57,7 +59,7 @@
     <input id="chatIn" maxlength="120" placeholder="Press Enter to chat" autocomplete="off">
   </div>
   <div id="inv" class="panel hidden">
-    <div class="row"><b>Pack</b><button class="x" data-close="inv">x</button></div>
+    <div class="row"><b>Pack</b><canvas id="invPrev" width="16" height="16"></canvas><button class="x" data-close="inv">x</button></div>
     <div id="equip"></div>
     <div id="slots"></div>
     <div class="small" id="invGold"></div>

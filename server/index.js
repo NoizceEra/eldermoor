@@ -14,6 +14,9 @@ import {
   MAIN_MAX, JOB_MAX, POINTS_PER_LEVEL, JOB_SWITCH_MS, ATTRS, ATTR_BASE, WEAPON_TYPES, JOB_ORDER, JOBS, SKILLS, EFFECTS,
   mainXpNeeded, jobXpNeeded, barSlots, knownSkills, newProgress,
 } from '../shared/jobs.js';
+import {
+  EQ_KEYS, KINDS, PALETTES, STARTER_KIT, emptyEq, eqKeyFor, defaultLook, validLook, kindName, visTokens, LOOK_COST,
+} from '../shared/gear.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SAVE_FILE = process.env.EM_SAVE || path.join(ROOT, 'data', 'saves.json');
@@ -67,10 +70,6 @@ function nearestFree(z, x, y, ok = free, maxR = 6) {
 }
 
 // ---------------------------------------------------------------- items
-const WEAPONS = [['Sword', 'sword'], ['Staff', 'staff'], ['Bow', 'bow'], ['Axe', 'axe'], ['Mace', 'mace'], ['Dagger', 'dagger'], ['Wand', 'wand']];
-const starterWeapon = (b) => ({ u: uid++, s: 'weapon', r: 0, l: 1, atk: 2, def: 0, hp: 0, b, n: `Apprentice ${b[0].toUpperCase()}${b.slice(1)}`, v: 5 });
-const ARMORS = ['Tunic', 'Vest', 'Mail', 'Plate'];
-const TRINKETS = [['Ring', 'ring'], ['Amulet', 'amulet'], ['Charm', 'charm']];
 const ADJ = [
   ['Worn', 'Plain', 'Rusty', 'Crude'],
   ['Sturdy', 'Keen', 'Fine', 'Hardy'],
@@ -78,26 +77,57 @@ const ADJ = [
   ['Dragon-forged', 'Starlit', 'Voidtouched', 'Ancient'],
 ];
 let uid = 1;
+const ATTR_SUFFIX = { str: 'of Might', dex: 'of Agility', int: 'of Insight', vit: 'of Vigor', spr: 'of Grace' };
+const SLOT_ODDS = [['weapon', 20], ['offhand', 8], ['head', 12], ['body', 14], ['legs', 10], ['boots', 10], ['gloves', 8], ['cape', 5], ['ring', 8], ['amulet', 5]];
+function rollSlot() {
+  let t = Math.random() * 100;
+  for (const [slot, w] of SLOT_ODDS) if ((t -= w) < 0) return slot;
+  return 'weapon';
+}
 
+/** Any wearable: base stats by slot, plus attribute affixes on rarer pieces. */
 function mkGear(slot, lvl, r) {
-  const m = RARITY[r].m;
-  const it = { u: uid++, s: slot, r, l: lvl, atk: 0, def: 0, hp: 0 };
-  if (slot === 'weapon') {
-    const [nm, b] = pick(WEAPONS);
-    it.b = b; it.n = `${pick(ADJ[r])} ${nm}`;
-    it.atk = Math.max(1, Math.round((2 + lvl * 1.3) * m));
-  } else if (slot === 'armor') {
-    it.b = 'armor'; it.n = `${pick(ADJ[r])} ${pick(ARMORS)}`;
-    it.def = Math.max(1, Math.round((1.5 + lvl * 0.9) * m));
-    it.hp = Math.round(lvl * 2 * (m - 0.6));
-  } else {
-    const [nm, b] = pick(TRINKETS);
-    it.b = b; it.n = `${pick(ADJ[r])} ${nm}`;
-    it.hp = Math.round((8 + lvl * 4) * m);
-    it.atk = Math.round(lvl * 0.3 * m);
+  const m = RARITY[r].m, k = pick(KINDS[slot]);
+  const sc = (f) => Math.max(1, Math.round((1 + lvl * f) * m));
+  const it = { u: uid++, s: slot, r, l: lvl, b: k.b, atk: 0, def: 0, hp: 0 };
+  if (k.pal) it.cl = pick(PALETTES[k.pal]);
+  const a = {};
+  const add = (attr, v) => { a[attr] = (a[attr] || 0) + v; };
+  const r1 = (v) => Math.round(v * 10) / 10;
+  switch (slot) {
+    case 'weapon': it.atk = Math.max(1, Math.round((2 + lvl * 1.3) * m)); break;
+    case 'offhand':
+      if (k.b === 'shield') { it.def = sc(0.55); it.hp = Math.round(lvl * 1.2 * m); }
+      else if (k.b === 'tome') { add('int', sc(0.25)); add('spr', sc(0.12)); }
+      else { add('dex', sc(0.2)); it.crit = r1((1 + lvl * 0.08) * m); }
+      break;
+    case 'head': it.def = sc(0.4); it.hp = Math.round(lvl * m); break;
+    case 'body': it.def = sc(0.75); it.hp = Math.round(lvl * 1.8 * Math.max(0.3, m - 0.4)); break;
+    case 'legs': it.def = sc(0.5); break;
+    case 'boots': it.def = sc(0.3); it.dodge = r1((0.5 + lvl * 0.05) * m); break;
+    case 'gloves': it.def = sc(0.2); it.crit = r1((0.6 + lvl * 0.05) * m); break;
+    case 'cape': it.def = sc(0.15); add('dex', sc(0.1)); it.dodge = r1((0.4 + lvl * 0.04) * m); break;
+    case 'ring': it.hp = Math.round((6 + lvl * 2.5) * m); add(pick(ATTRS), sc(0.22)); break;
+    default: it.hp = Math.round((10 + lvl * 3.5) * m); add(pick(ATTRS), sc(0.2)); add(pick(ATTRS), sc(0.14));
   }
-  it.v = Math.max(1, Math.round((it.atk * 6 + it.def * 6 + it.hp * 0.8) * (1 + r * 0.5)));
+  if (slot !== 'ring' && slot !== 'amulet') for (let i = 0; i < Math.min(r, 3); i++) add(pick(ATTRS), Math.max(1, Math.round((1 + lvl * 0.12) * m * 0.7)));
+  if (Object.keys(a).length) it.a = a;
+  const top = Object.entries(a).sort((x, y) => y[1] - x[1])[0];
+  it.n = `${pick(ADJ[r])} ${k.n}${top && r >= 1 ? ` ${ATTR_SUFFIX[top[0]]}` : ''}`;
+  const attrSum = Object.values(a).reduce((t, v) => t + v, 0);
+  it.v = Math.max(1, Math.round((it.atk * 6 + it.def * 6 + it.hp * 0.8 + attrSum * 5 + ((it.crit || 0) + (it.dodge || 0)) * 8) * (1 + r * 0.5)));
   return it;
+}
+
+// What every new hero starts in (so each job looks the part from the first step).
+const starterWeapon = (b) => ({ u: uid++, s: 'weapon', r: 0, l: 1, atk: 2, def: 0, hp: 0, b, n: `Apprentice ${b[0].toUpperCase()}${b.slice(1)}`, v: 5 });
+function starterKit(job) {
+  const eq = emptyEq();
+  eq.weapon = starterWeapon(JOBS[job].start);
+  for (const [slot, [b, cl]] of Object.entries(STARTER_KIT[job])) {
+    eq[slot] = { u: uid++, s: slot, r: 0, l: 1, b, cl, atk: 0, def: 1, hp: 0, n: `Traveler's ${kindName(slot, b)}`, v: 3 };
+  }
+  return eq;
 }
 const mkPotion = (big) => ({
   u: uid++, s: 'potion', r: big ? 1 : 0, l: 1, b: 'potion',
@@ -123,15 +153,27 @@ function addItem(p, item) {
   return true;
 }
 
+const shopGear = (slot, lvl, b, n, cl, price) => ({ ...mkGear(slot, lvl, 0), b, n, cl, price });
 const SHOP = [
   { ...mkPotion(false), price: 25 },
   { ...mkPotion(true), price: 80 },
-  { ...mkGear('weapon', 4, 0), n: "Traveler's Blade", b: 'sword', price: 120 },
-  { ...mkGear('armor', 4, 0), n: 'Leather Vest', price: 110 },
-  { ...mkGear('trinket', 4, 1), n: 'Copper Ring', b: 'ring', price: 150 },
-  { ...mkGear('weapon', 10, 1), n: 'Ranger Longbow', b: 'bow', price: 600 },
-  { ...mkGear('weapon', 10, 1), n: 'Knight Longsword', b: 'sword', price: 600 },
-  { ...mkGear('weapon', 10, 1), n: 'Adept Staff', b: 'staff', price: 600 },
+  shopGear('weapon', 4, 'sword', "Traveler's Blade", undefined, 120),
+  shopGear('body', 4, 'vest', 'Leather Vest', '#8a5a2a', 110),
+  shopGear('head', 4, 'cap', "Traveler's Cap", '#3a5aa0', 60),
+  shopGear('legs', 4, 'pants', 'Wanderer Trousers', '#6a4a2a', 70),
+  shopGear('boots', 4, 'boots', 'Sturdy Boots', '#5a3a22', 70),
+  shopGear('gloves', 4, 'gloves', 'Work Gloves', '#8a5a2a', 60),
+  shopGear('cape', 4, 'cloak', "Traveler's Cloak", '#3f7a3f', 90),
+  shopGear('offhand', 4, 'shield', 'Wooden Buckler', '#8a5a2a', 100),
+  shopGear('offhand', 4, 'tome', 'Apprentice Tome', '#8a3a3a', 130),
+  shopGear('ring', 4, 'ring', 'Copper Ring', '#ff8a2a', 150),
+  shopGear('head', 6, 'horns', 'Horned Helm', '#aab2c0', 260),
+  shopGear('head', 6, 'circlet', 'Silver Circlet', '#e8c04a', 300),
+  shopGear('weapon', 10, 'bow', 'Ranger Longbow', undefined, 600),
+  shopGear('weapon', 10, 'sword', 'Knight Longsword', undefined, 600),
+  shopGear('weapon', 10, 'staff', 'Adept Staff', undefined, 600),
+  shopGear('weapon', 10, 'dagger', 'Rogue Stiletto', undefined, 600),
+  shopGear('weapon', 10, 'wand', 'Hexer Wand', undefined, 600),
 ];
 
 // ---------------------------------------------------------------- persistence
@@ -148,19 +190,42 @@ function writeSaves() {
 }
 function savePlayer(p) {
   saves[p.name.toLowerCase()] = {
-    v: 2, name: p.name, salt: p.salt, hash: p.hash, job: p.job, jobs: p.jobs, attr: p.attr, points: p.points, bar: p.bar, lvl: p.lvl, xp: p.xp, gold: p.gold,
+    v: 3, look: p.look, name: p.name, salt: p.salt, hash: p.hash, job: p.job, jobs: p.jobs, attr: p.attr, points: p.points, bar: p.bar, lvl: p.lvl, xp: p.xp, gold: p.gold,
     inv: p.inv, eq: p.eq, quest: p.quest, x: (p.z && p.z.kind !== 'world' ? p.ret : p).x, y: (p.z && p.z.kind !== 'world' ? p.ret : p).y, hp: p.hp,
   };
   savesDirty = true;
 }
-// Old saves (class + one level) become job + job level, with the earned points unspent.
-function migrate(s) {
-  if (s.v >= 2) return { ...s };
-  const job = JOBS[s.cls] ? s.cls : 'warrior';
-  const np = newProgress(job);
-  np.jobs[job] = { lvl: Math.max(1, Math.min(JOB_MAX, Math.ceil((s.lvl || 1) / 2))), xp: 0 };
-  np.points = POINTS_PER_LEVEL * (s.lvl || 1);
-  return { ...s, ...np, v: 2 };
+// Old saves are upgraded in steps: v1 (class + level) -> v2 (jobs/attributes) -> v3 (11 gear slots + looks).
+function migrateItem(it) {
+  if (!it) return it;
+  const o = { ...it };
+  if (o.s === 'armor') { o.s = 'body'; o.b = 'vest'; }
+  else if (o.s === 'trinket') o.s = o.b === 'ring' ? 'ring' : 'amulet';
+  return o;
+}
+function migrate(save) {
+  let o = { ...save };
+  if (!(o.v >= 2)) {
+    const job = JOBS[o.cls] ? o.cls : 'warrior';
+    const np = newProgress(job);
+    np.jobs[job] = { lvl: Math.max(1, Math.min(JOB_MAX, Math.ceil((o.lvl || 1) / 2))), xp: 0 };
+    np.points = POINTS_PER_LEVEL * (o.lvl || 1);
+    o = { ...o, ...np, v: 2 };
+  }
+  if (!(o.v >= 3)) {
+    const eq = emptyEq();
+    for (const [k, it] of Object.entries(o.eq || {})) {
+      const mi = migrateItem(it);
+      if (!mi) continue;
+      const key = k === 'armor' ? 'body' : k === 'trinket' ? eqKeyFor(eq, mi) : k;
+      if (key && key in eq) eq[key] = mi;
+    }
+    o.eq = eq;
+    o.inv = (o.inv || []).map(migrateItem);
+    o.look = o.look || defaultLook(o.name);
+    o.v = 3;
+  }
+  return o;
 }
 const hashPass = (pass, salt) => crypto.scryptSync(pass, salt, 32).toString('hex');
 
@@ -228,7 +293,7 @@ function computeStats(p) {
 const power = (p, scale) => (4 + p.st.A[scale] * 0.6 + p.st.wAtk * 0.8 + p.lvl * 0.8) * p.st.dmgMul;
 
 const meMsg = (p) => ({
-  t: 'me', id: p.id, name: p.name, job: p.job, jobs: p.jobs, attr: p.attr, points: p.points, bar: p.bar, slots: barSlots(p.lvl),
+  t: 'me', id: p.id, name: p.name, look: p.look, job: p.job, jobs: p.jobs, attr: p.attr, points: p.points, bar: p.bar, slots: barSlots(p.lvl),
   lvl: p.lvl, xp: p.xp, xpn: p.lvl >= MAIN_MAX ? 0 : mainXpNeeded(p.lvl), jxpn: p.jobs[p.job].lvl >= JOB_MAX ? 0 : jobXpNeeded(p.jobs[p.job].lvl),
   hp: p.hp, mh: p.st.mh, gold: p.gold, inv: p.inv, eq: p.eq, quest: p.quest,
   st: {
@@ -255,8 +320,8 @@ function login(ws, m) {
     const inv = Array(INV_SIZE).fill(null);
     inv[0] = { ...mkPotion(false), c: 3 };
     p = {
-      ...newProgress(job), v: 2, name, salt, hash: hashPass(pass, salt), lvl: 1, xp: 0, gold: 20, inv,
-      eq: { weapon: starterWeapon(JOBS[job].start), armor: null, trinket: null }, quest: { i: 0, s: 0, p: 0 },
+      ...newProgress(job), v: 3, look: validLook(m.look) || defaultLook(name), name, salt, hash: hashPass(pass, salt), lvl: 1, xp: 0, gold: 20, inv,
+      eq: starterKit(job), quest: { i: 0, s: 0, p: 0 },
       x: 0, y: 0, hp: 1, buffs: {}, cd: {}, fx: {},
     };
   }
@@ -684,9 +749,9 @@ function dropLoot(m) {
   };
   put(null, ri(def.gold[0], def.gold[1]));
   if (Math.random() < (def.boss ? 1 : 0.28)) {
-    const slot = pick(['weapon', 'armor', 'trinket']);
+    const slot = rollSlot();
     put(mkGear(slot, Math.max(1, m.lvl + ri(-1, 1)), rollRarity(m.lvl, def.boss)));
-    if (def.boss) put(mkGear(pick(['weapon', 'armor', 'trinket']), m.lvl + 1, rollRarity(m.lvl, true)));
+    if (def.boss) put(mkGear(rollSlot(), m.lvl + 1, rollRarity(m.lvl, true)));
   }
   if (Math.random() < 0.3) put(mkPotion(m.lvl > 8 && Math.random() < 0.5));
 }
@@ -1034,7 +1099,7 @@ function debugCmd(p, m) {
   }
   if (m.atkMul) p.dbgMul = Number(m.atkMul) || 0;
   if (m.gold) p.gold += m.gold | 0;
-  if (m.give) for (let i = 0; i < (m.n || 1); i++) addItem(p, m.give === 'potion' ? mkPotion(false) : mkGear(m.give, 10, Number.isInteger(m.r) ? m.r : 2));
+  if (m.give) for (let i = 0; i < (m.n || 1); i++) addItem(p, m.give === 'potion' ? mkPotion(false) : mkGear(m.give === 'armor' ? 'body' : m.give === 'trinket' ? 'ring' : m.give, 10, Number.isInteger(m.r) ? m.r : 2));
   if (m.god) p.god = true;
   if (m.lvl) p.lvl = Math.max(1, Math.min(MAIN_MAX, m.lvl | 0));
   if (m.jobLvl) { p.jobs[p.job].lvl = Math.max(1, Math.min(JOB_MAX, m.jobLvl | 0)); fillBar(p); for (const id of knownOf(p)) p.knownSeen.add(id); }
@@ -1267,7 +1332,7 @@ function onMessage(ws, raw) {
       if (Q.reward && !p.inv.includes(null)) return log(p, 'Make room in your pack first.', '#ff8a8a');
       p.gold += Q.gold;
       giveXp(p, Q.xp);
-      if (Q.reward) addItem(p, mkGear(pick(['weapon', 'armor', 'trinket']), 20, 3));
+      if (Q.reward) addItem(p, mkGear(rollSlot(), 20, 3));
       log(p, `Quest complete! +${Q.xp} XP, +${Q.gold} gold.`, '#ffe066');
       q.i++; q.s = 0; q.p = 0; p.dirty = true;
       break;
@@ -1292,21 +1357,31 @@ function onMessage(ws, raw) {
       break;
     }
     case 'equip': {
-      const i = m.slot | 0, it = p.inv[i];
-      if (!it || !(it.s in p.eq)) return;
+      const i = m.slot | 0, it = p.inv[i], key = eqKeyFor(p.eq, it);
+      if (!it || !key) return;
       const req = Math.max(1, it.l - 2);
       if (p.lvl < req) return log(p, `You need level ${req} to use that.`, '#ff8a8a');
-      p.inv[i] = p.eq[it.s]; p.eq[it.s] = it;
+      p.inv[i] = p.eq[key]; p.eq[key] = it;
       computeStats(p); p.dirty = true;
       break;
     }
     case 'unequip': {
-      const it = p.eq[m.s];
+      const it = EQ_KEYS.includes(m.s) ? p.eq[m.s] : null;
       if (!it) return;
       const i = p.inv.indexOf(null);
       if (i < 0) return log(p, 'Your pack is full.', '#ff8a8a');
       p.inv[i] = it; p.eq[m.s] = null;
       computeStats(p); p.dirty = true;
+      break;
+    }
+    case 'look': {
+      const L = validLook(m.look);
+      if (!L) return;
+      if (!safeAt(p.z, p.x, p.y)) return log(p, 'Visit the town square to change your look.', '#ff8a8a');
+      if (L.every((v, i) => v === p.look[i])) return;
+      if (p.gold < LOOK_COST) return log(p, `A new look costs ${LOOK_COST} gold.`, '#ff8a8a');
+      p.gold -= LOOK_COST; p.look = L; p.dirty = true;
+      log(p, 'You look like a new hero.', '#c06bff');
       break;
     }
     case 'use': {
@@ -1348,8 +1423,7 @@ function broadcast(now) {
     const ents = [];
     for (const o of players.values()) {
       if (o.z !== p.z || Math.abs(o.x - p.x) > VX || Math.abs(o.y - p.y) > VY) continue;
-      const w = o.eq.weapon, a = o.eq.armor;
-      ents.push({ i: o.id, k: 'p', x: o.x, y: o.y, f: o.f, h: o.hp, mh: o.st.mh, n: o.name, l: o.lvl, c: o.job, fx: fxIds(o), d: o.dead ? 1 : 0, w: w ? w.b : '', wr: w ? w.r : 0, ar: a ? a.r : -1, sp: o.st.moveMul > 1.2 ? 1 : 0 });
+      ents.push({ i: o.id, k: 'p', x: o.x, y: o.y, f: o.f, h: o.hp, mh: o.st.mh, n: o.name, l: o.lvl, c: o.job, lk: o.look, vs: visTokens(o.eq), fx: fxIds(o), d: o.dead ? 1 : 0, sp: o.st.moveMul > 1.2 ? 1 : 0 });
     }
     for (const m of p.z.mobs.values()) {
       if (m.dead || Math.abs(m.x - p.x) > VX || Math.abs(m.y - p.y) > VY) continue;
@@ -1357,7 +1431,7 @@ function broadcast(now) {
     }
     for (const d of p.z.drops.values()) {
       if (Math.abs(d.x - p.x) > VX || Math.abs(d.y - p.y) > VY) continue;
-      ents.push({ i: d.id, k: 'd', x: d.x, y: d.y, g: d.gold ? 1 : 0, b: d.item ? d.item.b : '', r: d.item ? d.item.r : 0, n: d.item ? d.item.n : `${d.gold} gold` });
+      ents.push({ i: d.id, k: 'd', x: d.x, y: d.y, g: d.gold ? 1 : 0, b: d.item ? d.item.b : '', r: d.item ? d.item.r : 0, cl: d.item ? d.item.cl || '' : '', n: d.item ? d.item.n : `${d.gold} gold` });
     }
     send(p, { t: 's', e: ents, tm: now });
     if (p.dirty) { send(p, meMsg(p)); p.dirty = false; }

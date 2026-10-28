@@ -2,6 +2,7 @@
 // two-tone bevel shade and a 1px dark outline, then cached as a canvas.
 import { hash2 } from '/shared/world.js';
 import { SKILLS } from '/shared/jobs.js';
+import { SKIN_TONES, HAIR_STYLES, HAIR_COLORS, EYE_COLORS, defaultColor } from '/shared/gear.js';
 
 const hex = (h) => { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
 const toHex = (a) => '#' + a.map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('');
@@ -118,6 +119,49 @@ function weapon(g, kind, x, blade, mirror = false) {
 }
 
 // ------------------------------------------------------------------ humanoids
+function hairFront(g, o, dir) {
+  const hs = o.hs || 'short', hc = o.hair;
+  if (dir === 1) { // back of the head
+    if (hs === 'bald') { g.rect(5, 2, 6, 5, o.skin); return; }
+    if (hs === 'mohawk') { g.rect(5, 2, 6, 5, o.skin); g.rect(7, 0, 2, 7, hc); return; }
+    g.rect(5, 2, 6, 5, hc);
+    if (hs === 'long') g.rect(4, 3, 8, 6, hc);
+    if (hs === 'ponytail') { g.rect(7, 7, 2, 3, hc); g.set(8, 10, adj(hc, 0.8)); }
+    if (hs === 'spiky') { for (const x of [5, 9, 10]) g.set(x, 1, hc); g.set(7, 0, hc); g.set(7, 1, hc); }
+    return;
+  }
+  g.rect(5, 2, 6, 5, o.skin);
+  switch (hs) {
+    case 'bald': break;
+    case 'long': g.rect(5, 2, 6, 2, hc); g.set(5, 4, hc); g.set(10, 4, hc); g.rect(4, 3, 1, 6, hc); g.rect(11, 3, 1, 6, hc); break;
+    case 'spiky': g.rect(5, 2, 6, 2, hc); g.set(5, 4, hc); g.set(10, 4, hc); for (const x of [5, 9, 10]) g.set(x, 1, hc); g.set(7, 0, hc); g.set(7, 1, hc); break;
+    case 'mohawk': g.rect(7, 0, 2, 4, hc); g.rect(6, 1, 1, 2, hc); g.rect(9, 1, 1, 2, hc); break;
+    case 'ponytail': g.rect(5, 2, 6, 2, hc); g.set(5, 4, hc); g.set(10, 4, hc); g.set(11, 5, hc); g.set(11, 6, hc); break;
+    default: g.rect(5, 2, 6, 2, hc); g.set(5, 4, hc); g.set(10, 4, hc);
+  }
+}
+function hairSide(g, o) { // facing right: the back of the head is on the left
+  const hs = o.hs || 'short', hc = o.hair;
+  g.rect(5, 2, 6, 5, o.skin);
+  switch (hs) {
+    case 'bald': break;
+    case 'long': g.rect(5, 2, 6, 2, hc); g.rect(5, 4, 3, 3, hc); g.rect(4, 4, 3, 6, hc); break;
+    case 'spiky': g.rect(5, 2, 6, 2, hc); g.rect(5, 4, 3, 3, hc); for (const x of [5, 7, 9]) g.set(x, 1, hc); g.set(6, 0, hc); break;
+    case 'mohawk': g.rect(6, 0, 3, 4, hc); g.rect(5, 4, 2, 2, hc); break;
+    case 'ponytail': g.rect(5, 2, 6, 2, hc); g.rect(5, 4, 3, 3, hc); g.rect(3, 4, 2, 4, hc); g.set(3, 8, hc); break;
+    default: g.rect(5, 2, 6, 2, hc); g.rect(5, 4, 3, 3, hc);
+  }
+  g.set(11, 5, o.skin);
+}
+function bodyDetail(g, o, side) {
+  if (!o.bk) return;
+  const t = o.tunic, lt = adj(t, 1.25), dk = adj(t, 0.7);
+  const x0 = side ? 6 : 5, w = side ? 4 : 6;
+  if (o.bk === 'mail') { for (let y = 7; y < 10; y++) for (let x = x0; x < x0 + w; x++) if ((x + y) % 2) g.set(x, y, lt); }
+  else if (o.bk === 'leather') { if (!side) { g.rect(7, 7, 2, 3, dk); for (let y = 7; y < 10; y += 2) { g.set(6, y, lt); g.set(9, y, lt); } } else g.rect(7, 7, 1, 3, dk); }
+  else if (o.bk === 'plate') { if (!side) { g.rect(3, 7, 2, 2, lt); g.rect(11, 7, 2, 2, lt); g.rect(7, 7, 2, 3, lt); g.rect(5, 9, 6, 1, dk); } else { g.rect(6, 7, 2, 2, lt); g.rect(7, 9, 2, 1, dk); } }
+}
+
 /** dir: 0 down, 1 up, 2 left, 3 right; fr: 0..3 walk cycle */
 function humanoid(o, dir, fr) {
   const g = new Grid(16, 16);
@@ -127,6 +171,7 @@ function humanoid(o, dir, fr) {
   const tunic = o.tunic;
 
   if (!side) {
+    if (o.cape && dir === 0) g.rect(3, 8, 10, 7, o.cape);
     const leg = (x, raised) => { const yb = raised ? 13 : 14; g.rect(x, 11, 2, yb - 11, pants); g.rect(x, yb, 2, 1, boots); };
     leg(6, fr === 1); leg(8, fr === 3);
     g.rect(5, 7, 6, 4, tunic);
@@ -134,34 +179,38 @@ function humanoid(o, dir, fr) {
     g.rect(5, 10, 6, 1, o.belt);
     const al = fr === 3 ? 1 : 0, ar = fr === 1 ? 1 : 0;
     g.rect(4, 7 + al, 1, 3, o.sleeve || tunic); g.rect(11, 7 + ar, 1, 3, o.sleeve || tunic);
-    g.set(4, 10 + al, o.skin); g.set(11, 10 + ar, o.skin);
+    g.rect(4, 9 + al, 1, 2, o.gloves || o.skin); g.rect(11, 9 + ar, 1, 2, o.gloves || o.skin);
     if (o.trim) { g.set(4, 7, o.trim); g.set(11, 7, o.trim); g.set(7, 10, o.trim); g.set(8, 10, o.trim); }
     // head
-    g.rect(5, 2, 6, 5, dir === 1 ? o.hair : o.skin);
-    if (dir === 0) { g.rect(5, 2, 6, 2, o.hair); g.set(5, 4, o.hair); g.set(10, 4, o.hair); }
+    if (o.cape && dir === 1) { g.rect(4, 7, 8, 7, o.cape); g.rect(7, 8, 1, 5, adj(o.cape, 0.8)); }
+    hairFront(g, o, dir);
     if (o.apron && dir === 0) g.rect(6, 8, 4, 5, '#e8e0cc');
   } else {
     // side view, facing right
+    if (o.cape) g.rect(3, 7, 4, 8, o.cape);
     const back = stride ? 5 : 6, front = stride ? 9 : 8;
     g.rect(back, 11, 2, fr === 1 ? 2 : 3, adj(pants, 0.85)); g.rect(back, fr === 1 ? 13 : 14, 2, 1, boots);
     g.rect(front, 11, 2, fr === 3 ? 2 : 3, pants); g.rect(front, fr === 3 ? 13 : 14, 2, 1, boots);
     g.rect(6, 7, 4, 4, tunic);
     if (o.robe) { g.rect(5, 11, 6, 2, tunic); g.rect(5, 12, 6, 2, tunic); }
     g.rect(6, 10, 4, 1, o.belt);
-    g.rect(7, 7, 2, 3, adj(o.sleeve || tunic, 0.88)); g.set(8, 10, o.skin);
+    g.rect(7, 7, 2, 3, adj(o.sleeve || tunic, 0.88)); g.set(8, 10, o.gloves || o.skin); if (o.gloves) g.set(8, 9, o.gloves);
     if (o.trim) g.set(7, 7, o.trim);
-    g.rect(5, 2, 6, 5, o.skin);
-    g.rect(5, 2, 6, 2, o.hair); g.rect(5, 4, 3, 3, o.hair);
-    g.set(11, 5, o.skin);
+    hairSide(g, o);
   }
 
   // hats
-  if (o.hat === 'helm') {
-    g.rect(5, 1, 6, 3, '#aab2c0'); g.rect(4, 2, 1, 3, '#aab2c0'); g.rect(11, 2, 1, 3, '#aab2c0');
-    if (dir === 0) g.rect(7, 4, 2, 2, '#aab2c0');
-    if (dir === 3) g.rect(10, 3, 2, 3, '#aab2c0');
-    if (dir === 2) g.rect(4, 3, 2, 3, '#aab2c0');
-    g.rect(7, 0, 2, 1, '#c03a3a'); g.set(7, 1, '#c03a3a');
+  const hc2 = o.hatCol || '#aab2c0';
+  if (o.hat === 'helm' || o.hat === 'horns') {
+    g.rect(5, 1, 6, 3, hc2); g.rect(4, 2, 1, 3, hc2); g.rect(11, 2, 1, 3, hc2);
+    if (dir === 0) g.rect(7, 4, 2, 2, hc2);
+    if (dir === 3) g.rect(10, 3, 2, 3, hc2);
+    if (dir === 2) g.rect(4, 3, 2, 3, hc2);
+    if (o.hat === 'horns') {
+      const hn = '#e8e0d0';
+      if (dir === 0 || dir === 1) { g.rect(3, 0, 2, 3, hn); g.rect(11, 0, 2, 3, hn); g.set(2, 0, hn); g.set(13, 0, hn); }
+      else { g.rect(7, 0, 2, 3, hn); g.set(9, 0, hn); }
+    } else if (!o.hatCol) { g.rect(7, 0, 2, 1, '#c03a3a'); g.set(7, 1, '#c03a3a'); }
   } else if (o.hat === 'wizard') {
     g.rect(3, 3, 10, 1, o.hatCol); g.rect(5, 2, 6, 1, o.hatCol); g.rect(6, 1, 4, 1, o.hatCol); g.rect(7, 0, 2, 1, o.hatCol);
     g.rect(5, 2, 6, 1, adj(o.hatCol, 0.8)); g.set(9, 2, '#e8c04a'); g.set(10, 2, '#e8c04a');
@@ -173,6 +222,13 @@ function humanoid(o, dir, fr) {
     if (dir === 2) g.rect(4, 3, 4, 4, o.skin);
   } else if (o.hat === 'cap') {
     g.rect(5, 1, 6, 2, o.hatCol); g.rect(4, 3, 8, 1, o.hatCol);
+  } else if (o.hat === 'crown') {
+    const gd = o.hatCol || '#f0c040';
+    g.rect(5, 1, 6, 2, gd); for (const x of [5, 7, 9, 10]) g.set(x, 0, gd);
+    if (dir !== 1) g.set(8, 2, '#ff5a5a');
+  } else if (o.hat === 'circlet') {
+    g.rect(5, 2, 6, 1, o.hatCol || '#e8c04a');
+    if (dir !== 1) g.set(8, 1, '#5fd3ff');
   }
 
   g.shade();
@@ -189,6 +245,8 @@ function humanoid(o, dir, fr) {
     else g.set(dir === 3 ? 4 : 11, 3, o.skin);
   }
 
+  bodyDetail(g, o, side);
+
   // weapon & shield
   if (o.weapon) {
     const bx = dir === 0 ? 12 : dir === 1 ? 3 : dir === 3 ? 11 : 4;
@@ -197,8 +255,18 @@ function humanoid(o, dir, fr) {
   if (o.shield && dir !== 1) {
     const sx = dir === 0 ? 2 : dir === 3 ? 5 : 8;
     if (dir === 0 || dir === 2 || dir === 3) {
-      g.rect(sx, 7, 4, 5, '#5a6a8a'); g.rect(sx + 1, 8, 2, 3, '#c8a040'); g.rect(sx, 7, 4, 1, '#8a9ac0');
+      g.rect(sx, 7, 4, 5, o.shieldCol || '#5a6a8a'); g.rect(sx + 1, 8, 2, 3, '#c8a040'); g.rect(sx, 7, 4, 1, adj(o.shieldCol || '#5a6a8a', 1.35));
     }
+  }
+  if (o.offhand === 'tome' && dir !== 1) {
+    const bx = dir === 0 ? 2 : dir === 3 ? 6 : 7;
+    g.rect(bx, 8, 3, 4, o.offCol || '#8a3a3a'); g.rect(bx, 8, 1, 4, '#e8d8a0'); g.set(bx + 1, 9, '#e8c04a');
+  }
+  if (o.offhand === 'quiver') {
+    const q = o.offCol || '#7a5230';
+    if (dir === 1) { g.rect(9, 3, 2, 8, q); for (const x of [9, 10]) g.set(x, 2, '#e8e8e8'); }
+    else if (dir === 0) { g.rect(11, 4, 1, 4, q); g.set(11, 3, '#e8e8e8'); }
+    else { g.rect(5, 3, 2, 7, q); g.set(5, 2, '#e8e8e8'); g.set(6, 2, '#cc3a3a'); }
   }
   return g.outline().canvas(dir === 2);
 }
@@ -223,6 +291,33 @@ const NPC_LOOK = {
 
 const cache = new Map();
 const memo = (k, f) => { let v = cache.get(k); if (!v) { v = f(); cache.set(k, v); } return v; };
+
+
+// ------------------------------------------------------------------ player characters: appearance + worn gear
+const HERO_BODY = { robe: { robe: true }, tunic: {}, vest: { bk: 'leather' }, mail: { bk: 'mail' }, plate: { bk: 'plate' } };
+const HERO_HAT = { cap: 'cap', hood: 'hood', helm: 'helm', crown: 'crown', horns: 'horns', circlet: 'circlet', wizhat: 'wizard' };
+function heroOptions(lk, vs) {
+  const tok = (i) => { const [b, cl, r] = (vs[i] || '').split('~'); return b ? { b, cl: cl || defaultColor(b), r: Number(r) || 0 } : null; };
+  const head = tok(0), body = tok(1), legs = tok(2), boots = tok(3), gloves = tok(4), cape = tok(5), off = tok(6), wep = tok(7);
+  const o = {
+    skin: SKIN_TONES[lk[0]] || SKIN_TONES[1], hs: HAIR_STYLES[lk[1]] || 'short', hair: HAIR_COLORS[lk[2]] || HAIR_COLORS[1], eye: EYE_COLORS[lk[3]] || EYE_COLORS[0],
+    tunic: body ? body.cl : '#d8d0c0', pants: legs ? legs.cl : '#6a5a4a', boots: boots ? boots.cl : '#4a3a2a', belt: '#3a2a1a', hat: 'none',
+    weapon: wep ? wep.b : null, blade: BLADE[wep ? wep.r : 0],
+  };
+  if (body) Object.assign(o, HERO_BODY[body.b] || {});
+  if (body && body.b === 'plate') o.sleeve = adj(body.cl, 1.15);
+  if (head) { o.hat = HERO_HAT[head.b] || 'cap'; o.hatCol = head.cl; }
+  if (gloves) o.gloves = gloves.cl;
+  if (cape) o.cape = cape.cl;
+  if (off) { if (off.b === 'shield') { o.shield = true; o.shieldCol = off.cl; } else o.offhand = off.b; o.offCol = off.cl; }
+  const rmax = Math.max(body ? body.r : 0, head ? head.r : 0, legs ? legs.r : 0, boots ? boots.r : 0);
+  if (rmax >= 2) o.trim = RARITY_COL[rmax];
+  return o;
+}
+/** lk = [skin, hairStyle, hairColour, eyes], vs = worn-gear tokens "kind~dye~rarity" in VIS_ORDER */
+export function heroSprite(lk, vs, dir, fr) {
+  return memo(`h${lk.join('')}|${vs.join(',')}|${dir}${fr}`, () => humanoid(heroOptions(lk, vs), dir, fr));
+}
 
 export function playerSprite(cls, skin, dir, fr, wb = '', wr = 0, ar = -1) {
   return memo(`p${cls}${skin}${dir}${fr}${wb}${wr}${ar}`, () => {
@@ -331,10 +426,11 @@ export function mobSprite(type, dir, fr) {
 }
 
 // ------------------------------------------------------------------ item icons
-export function itemIcon(base, r = 0) {
-  return memo(`i${base}${r}`, () => {
+export function itemIcon(base, r = 0, cl = '') {
+  return memo(`i${base}${r}${cl}`, () => {
     const g = new Grid(16, 16);
-    const b = BLADE[r], gem = RARITY_COL[r];
+    const b = BLADE[r], gem = cl || RARITY_COL[r];
+    const c = cl || defaultColor(base), cd = adj(c, 0.72), cl2 = adj(c, 1.3);
     switch (base) {
       case 'sword':
         g.line(3, 12, 12, 3, b); g.line(4, 12, 12, 4, adj(b, 0.8)); g.set(13, 2, adj(b, 1.4));
@@ -367,6 +463,33 @@ export function itemIcon(base, r = 0) {
         g.rect(6, 1, 4, 2, '#b08a5a'); g.rect(7, 3, 2, 2, '#d8f0ff'); g.ell(8, 10, 5, 4.4, '#d8f0ff'); g.ell(8, 11, 4, 3.4, liq);
         g.set(6, 9, adj(liq, 1.5)); g.set(5, 8, '#fff'); break;
       }
+      case 'cap': g.rect(4, 6, 8, 4, c); g.rect(2, 9, 12, 2, cd); g.rect(5, 7, 2, 1, cl2); break;
+      case 'hood': g.ell(8, 8, 6, 6, c); g.ell(8, 10, 3, 3, null); g.rect(6, 4, 4, 1, cl2); break;
+      case 'helm': g.ell(8, 8, 5, 5, c); g.rect(3, 9, 10, 5, c); g.rect(5, 10, 6, 2, '#16121f'); g.rect(7, 2, 2, 3, '#c03a3a'); break;
+      case 'crown': g.rect(3, 8, 10, 5, c); for (const x of [3, 6, 9, 12]) g.rect(x, 5, 1, 3, c); g.rect(7, 10, 2, 2, '#ff5a5a'); break;
+      case 'horns': g.ell(8, 9, 4.5, 4.5, c); g.rect(4, 12, 8, 2, c); g.rect(2, 2, 2, 6, '#e8e0d0'); g.rect(12, 2, 2, 6, '#e8e0d0'); break;
+      case 'circlet': g.ell(8, 9, 6, 3.5, c); g.ell(8, 9, 4, 2, null); g.rect(7, 5, 2, 2, '#5fd3ff'); break;
+      case 'wizhat': g.rect(7, 1, 2, 2, c); g.rect(6, 3, 4, 2, c); g.rect(5, 5, 6, 3, c); g.rect(2, 8, 12, 2, cd); g.rect(5, 7, 6, 1, '#e8c04a'); break;
+      case 'robe': g.rect(5, 2, 6, 12, c); g.rect(3, 3, 3, 7, cd); g.rect(10, 3, 3, 7, cd); g.rect(5, 8, 6, 1, '#e8c04a'); break;
+      case 'tunic': g.rect(4, 3, 8, 9, c); g.rect(2, 3, 2, 5, cd); g.rect(12, 3, 2, 5, cd); g.rect(6, 3, 4, 1, cl2); break;
+      case 'vest': g.rect(4, 3, 8, 9, c); g.rect(7, 4, 2, 8, '#2a1a10'); g.rect(2, 3, 2, 4, cd); g.rect(12, 3, 2, 4, cd); break;
+      case 'mail': g.rect(4, 3, 8, 9, c); for (let y = 3; y < 12; y++) for (let x = 4; x < 12; x++) if ((x + y) % 2) g.set(x, y, cl2); g.rect(2, 3, 2, 5, c); g.rect(12, 3, 2, 5, c); break;
+      case 'plate': g.rect(4, 3, 8, 9, c); g.rect(2, 3, 3, 3, cl2); g.rect(11, 3, 3, 3, cl2); g.rect(7, 4, 2, 6, cl2); g.rect(4, 11, 8, 1, cd); break;
+      case 'pants': g.rect(5, 3, 6, 3, c); g.rect(5, 6, 2, 8, c); g.rect(9, 6, 2, 8, c); g.rect(5, 3, 6, 1, cl2); break;
+      case 'leggings': g.rect(5, 3, 6, 2, c); g.rect(5, 5, 2, 9, c); g.rect(9, 5, 2, 9, c); g.rect(6, 6, 1, 6, cl2); break;
+      case 'greaves': g.rect(5, 3, 6, 3, c); g.rect(5, 6, 2, 8, c); g.rect(9, 6, 2, 8, c); g.rect(5, 8, 2, 2, cl2); g.rect(9, 8, 2, 2, cl2); break;
+      case 'boots': g.rect(5, 3, 4, 8, c); g.rect(5, 9, 8, 4, c); g.rect(5, 13, 8, 1, cd); g.rect(5, 3, 4, 1, cl2); break;
+      case 'shoes': g.rect(5, 6, 4, 5, c); g.rect(5, 9, 8, 3, c); g.rect(5, 12, 8, 1, cd); break;
+      case 'sabatons': g.rect(5, 3, 4, 8, c); g.rect(5, 9, 9, 4, c); g.rect(13, 10, 2, 2, cl2); g.rect(5, 6, 4, 2, cl2); break;
+      case 'gloves': g.rect(5, 7, 6, 6, c); for (const x of [5, 7, 9]) g.rect(x, 3, 2, 5, c); g.rect(11, 8, 2, 3, c); g.rect(5, 12, 6, 2, cd); break;
+      case 'gauntlets': g.rect(5, 7, 6, 5, c); for (const x of [5, 7, 9]) g.rect(x, 3, 2, 5, c); g.rect(11, 8, 2, 3, c); g.rect(4, 11, 8, 3, cl2); break;
+      case 'wraps': g.rect(5, 7, 6, 6, '#e8e0d0'); for (const x of [5, 7, 9]) g.rect(x, 3, 2, 5, '#e8e0d0'); g.rect(5, 9, 6, 1, c); g.rect(5, 12, 6, 1, c); break;
+      case 'cape': g.rect(4, 2, 8, 2, cd); g.rect(3, 4, 10, 8, c); g.rect(4, 12, 2, 2, c); g.rect(10, 12, 2, 2, c); g.rect(7, 4, 2, 7, cd); break;
+      case 'cloak': g.ell(8, 4, 4.5, 3, cd); g.rect(3, 5, 10, 9, c); g.rect(7, 5, 2, 9, cd); break;
+      case 'mantle': g.rect(3, 4, 10, 9, c); g.rect(3, 2, 10, 3, '#e8e0d0'); g.rect(5, 12, 6, 2, cd); break;
+      case 'shield': g.rect(4, 2, 8, 8, c); g.rect(5, 10, 6, 2, c); g.rect(7, 12, 2, 2, c); g.rect(7, 4, 2, 6, '#e8c04a'); g.rect(5, 6, 6, 1, '#e8c04a'); break;
+      case 'tome': g.rect(4, 3, 8, 10, c); g.rect(4, 3, 2, 10, cd); g.rect(12, 4, 1, 8, '#e8d8a0'); g.rect(7, 6, 3, 3, '#e8c04a'); break;
+      case 'quiver': g.rect(6, 5, 4, 9, c); g.rect(6, 5, 4, 1, cd); for (const [x, col] of [[6, '#cc3a3a'], [8, '#e8e8e8'], [10, '#cc3a3a']]) { g.rect(x, 1, 1, 4, '#8a6a3a'); g.rect(x, 1, 1, 2, col); } break;
       case 'gold':
         g.ell(8, 10, 5, 3.2, '#c8901a'); g.ell(8, 9, 5, 3.2, '#ffd23a'); g.ell(8, 9, 3, 1.8, '#e8b020'); g.set(6, 8, '#fff2a0'); break;
       default: g.rect(5, 5, 6, 6, '#888');

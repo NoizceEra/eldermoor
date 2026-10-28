@@ -9,7 +9,7 @@ every sprite, tile, tree and icon is drawn in code (`client/sprites.js`, `client
 cd D:\ai-studio\eldermoor
 npm install
 npm start            # http://localhost:3000  (set PORT to change)
-npm test             # headless tests: jobs/progression, solo loop, party, dungeon + boss, trading incl. dupe attacks (own save files)
+npm test             # headless tests: jobs/progression, gear/looks/migration, solo loop, party, dungeon + boss, trading incl. dupe attacks (own save files)
 ```
 
 Open the URL in several tabs to play together. Heroes persist in `data/saves.json`.
@@ -21,7 +21,7 @@ Open the URL in several tabs to play together. Heroes persist in `data/saves.jso
 | WASD / arrows | walk |
 | Click ground / monster / NPC / loot | path there, attack, talk, pick up |
 | 1-6 | your skill bar (3 slots at start, 4/5/6 at levels 10/20/30) |
-| C / J / K | hero window: stats and attributes / jobs / skills |
+| C / J / K | hero window: stats and attributes / jobs / skills (the Look tab changes your appearance) |
 | Q | health potion |
 | Space / Tab | target nearest enemy |
 | E | talk to nearest NPC |
@@ -42,7 +42,9 @@ Open the URL in several tabs to play together. Heroes persist in `data/saves.jso
 - **Multiclassing**: 6 jobs (Warrior, Mage, Ranger, Cleric, Rogue, Warlock), each with its own level (1-20) on top of your main level (1-60). 36 skills; every skill you learn stays with you and works in any bar slot under any job, so a Warrior can carry Frost Nova. Switch jobs any time you are out of combat (15s cooldown). Job levels keep their progress when you switch away.
 - **Attributes** (STR / DEX / INT / VIT / SPR): 3 points per level, plus automatic growth from your active job. Your weapon decides which attribute your auto attacks use.
 - **Combat v2**: crits, dodge, physical vs magic defense, status effects (stun, slow, burn, poison, bleed, vulnerable, haste, shields, regen, fear...), threat tables so tanks can hold monsters, global cooldown, telegraphed boss attacks (watch for the red circles).
-- Equipment, shop, 5-step quest chain, global chat, day/night with torchlight.
+- **Customization**: a character creator (skin, hair style and colour, eyes) with a live preview. Change your look later in the town square from the Look tab (50g).
+- **Wearables**: 11 equipment slots (weapon, offhand, head, body, legs, boots, gloves, cape, two rings, amulet), 40+ item kinds, and every worn piece is drawn on your character. Rarer gear rolls attribute affixes ("of Might", "of Insight"...), crit and dodge. Each job starts in its own outfit.
+- Shop, 5-step quest chain, global chat, day/night with torchlight.
 - Parties of up to 4: shared XP (with a group bonus) and quest credit for everyone in range, party frames, minimap dots, party chat.
 - **Player trading**: both sides offer up to 6 items + gold, both lock, both confirm. Any change unlocks everyone; the swap re-validates ownership, gold, range and pack space on the server, and cancels cleanly on disconnect, death, zone change or distance. Pack changes are frozen mid-trade.
 - Server-authoritative: movement, combat, loot and economy all validated server-side.

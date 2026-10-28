@@ -187,3 +187,19 @@ body.touch #trade { top: 70px; max-height: 70vh; overflow: auto; }
 .sbar .slot .n { position: absolute; left: 2px; top: 0; font-size: 7px; color: var(--gold); }
 body.touch #char { top: 8px; left: 8px; right: 8px; width: auto; max-height: 90vh; z-index: 8; }
 @media (max-width: 900px) { #char { left: 8px; right: 8px; width: auto; z-index: 8; } #buffs { left: 190px; } }
+
+/* ---- appearance + wearables ---- */
+#login { overflow: auto; justify-content: flex-start; }
+#loginForm { margin: auto; }
+.creator { display: flex; gap: 14px; align-items: center; }
+.creator canvas, .bigprev { width: 96px; height: 96px; image-rendering: pixelated; background: var(--ink); flex: none; box-shadow: 0 0 0 2px #3a2f60; }
+.lookrows { display: flex; flex-direction: column; gap: 5px; flex: 1; }
+.lrow { display: flex; align-items: center; gap: 6px; font-size: 8px; }
+.lrow .nm { width: 78px; color: var(--dim); } .lrow b { width: 34px; text-align: center; }
+.sw { width: 10px; height: 10px; box-shadow: 0 0 0 1px #000; display: inline-block; }
+.btnrow { display: flex; gap: 8px; }
+#invPrev { width: 48px; height: 48px; image-rendering: pixelated; background: var(--ink); }
+#equip { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
+.slot.eq { width: auto; height: auto; aspect-ratio: 1; flex: none; }
+.slot .lbl { font-size: 6px; }
+@media (max-height: 820px) { .logo { font-size: clamp(20px, 4vw, 34px); } .card canvas { width: 44px; height: 44px; margin-bottom: 3px; } .card { padding: 6px 2px; } .tag { display: none; } }

@@ -9,7 +9,7 @@ Delivered in phases, each committed with tests. Nothing here is a promise of a s
 | Phase | Scope | Status |
 |---|---|---|
 | 1 | Progression core: main level + job levels, 5 attributes, 6 jobs x 6 skills, skill library that carries over, 3-6 slot skill bar, status effects, threat, weapon-based auto attacks, telegraphed boss attacks, character window UI | **done** (tests: `smoke-jobs.mjs`) |
-| 2 | Customization + wearables: appearance creator (skin/hair/eyes), 10 equipment slots incl. head/body/legs/boots/gloves/cape/2 rings/amulet, equipment drawn on the character, item affixes | planned |
+| 2 | Customization + wearables: appearance creator (skin/hair/eyes), 11 equipment slots incl. head/body/legs/boots/gloves/cape/2 rings/amulet, equipment drawn on the character, item affixes | **done** (tests: `smoke-gear.mjs`) |
 | 3 | Bigger world: 256x256 continent, chunked rendering, 5+ regions (meadow, forest, swamp, desert, tundra, volcano), 3 more towns, ~20 more monsters, region quest chains, second dungeon | planned |
 | 4 | UX + scale: full map, quest log, settings, buff bars, tooltips, state delta-encoding / spatial index, party loot rules, deploy config | planned |
 | - | Shareable URL | needs the owner's go-ahead (see "Hosting" below) |

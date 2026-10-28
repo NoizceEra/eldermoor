@@ -2,6 +2,7 @@
 import { W, H, G, O, TOWN, generateWorld, generateDungeon, isSolid, inTown } from '/shared/world.js';
 import { SEED, MOBS, QUESTS, RARITY, NPCS } from '/shared/data.js';
 import { JOBS, JOB_ORDER, SKILLS, ATTRS, ATTR_INFO, EFFECTS, skillsOfJob } from '/shared/jobs.js';
+import { EQ_KEYS, EQ_LABEL, LOOK_LIMITS, LOOK_LABELS, LOOK_COST, SKIN_TONES, HAIR_STYLES, HAIR_COLORS, EYE_COLORS, STARTER_KIT, defaultLook, visTokens } from '/shared/gear.js';
 import * as SP from '/client/sprites.js';
 import { TS, buildWorldArt, drawWaterTile, treeSprite } from '/client/gfx.js';
 
@@ -78,14 +79,25 @@ const sfx = {
 
 // ------------------------------------------------------------------ icons
 const urlCache = new Map();
-const iconURL = (b, r) => { const k = `${b}${r}`; if (!urlCache.has(k)) urlCache.set(k, SP.itemIcon(b, r).toDataURL()); return urlCache.get(k); };
+const iconURL = (b, r, cl = '') => { const k = `${b}${r}${cl}`; if (!urlCache.has(k)) urlCache.set(k, SP.itemIcon(b, r, cl).toDataURL()); return urlCache.get(k); };
+const statParts = (it) => {
+  const out = [];
+  if (it.atk) out.push(`+${it.atk} ATK`);
+  if (it.def) out.push(`+${it.def} DEF`);
+  if (it.hp) out.push(`+${it.hp} HP`);
+  for (const [k, v] of Object.entries(it.a || {})) out.push(`+${v} ${k.toUpperCase()}`);
+  if (it.crit) out.push(`+${it.crit}% crit`);
+  if (it.dodge) out.push(`+${it.dodge}% dodge`);
+  if (it.heal) out.push(`heals ${it.heal}`);
+  return out;
+};
 const skillURL = (id) => { const k = `sk${id}`; if (!urlCache.has(k)) urlCache.set(k, SP.skillIcon(id).toDataURL()); return urlCache.get(k); };
 
 // ------------------------------------------------------------------ networking
-function connect(name, pass, cls) {
+function connect(name, pass, cls, look) {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   ws = new WebSocket(`${proto}://${location.host}/ws`);
-  ws.onopen = () => ws.send(JSON.stringify({ t: 'login', name, pass, cls }));
+  ws.onopen = () => ws.send(JSON.stringify({ t: 'login', name, pass, cls, look }));
   ws.onmessage = (e) => onMsg(JSON.parse(e.data));
   ws.onclose = (e) => {
     if (inGame) { $('dcWhy').textContent = e.reason || 'Connection lost.'; $('dc').classList.remove('hidden'); }
@@ -450,7 +462,7 @@ function toggleOffer(u) {
   const cur = offerUids();
   sendOffer(cur.includes(u) ? cur.filter((x) => x !== u) : [...cur, u]);
 }
-const itemText = (it) => `${it.n} (${RARITY[it.r].n})${it.atk ? ` +${it.atk} ATK` : ''}${it.def ? ` +${it.def} DEF` : ''}${it.hp ? ` +${it.hp} HP` : ''}${it.heal ? ` heals ${it.heal}` : ''}${it.c > 1 ? ` x${it.c}` : ''}`;
+const itemText = (it) => `${it.n} (${RARITY[it.r].n}) ${statParts(it).join(' ')}${it.c > 1 ? ` x${it.c}` : ''}`;
 function renderTrade() {
   const v = tradeView, box = $('trade');
   if (!v) { box.classList.add('hidden'); return; }
@@ -633,13 +645,28 @@ function renderChar() {
   const head = mkEl('div', 'row', `<b>${esc(me.name)}</b><span class="small">Lv ${me.lvl} &middot; ${JOBS[me.job].name} ${me.jobs[me.job].lvl}</span>`);
   const x = mkEl('button', 'x', 'x'); x.onclick = () => box.classList.add('hidden'); head.appendChild(x);
   const tabs = mkEl('div', 'tabs');
-  for (const [id, label] of [['stats', 'Stats'], ['jobs', 'Jobs'], ['skills', 'Skills']]) {
+  for (const [id, label] of [['stats', 'Stats'], ['jobs', 'Jobs'], ['skills', 'Skills'], ['look', 'Look']]) {
     const b = mkEl('button', charTab === id ? 'on' : '', label); b.onclick = () => { charTab = id; renderChar(); }; tabs.appendChild(b);
   }
   const body = mkEl('div', 'cbody');
   box.append(head, tabs, body);
-  (charTab === 'stats' ? statsTab : charTab === 'jobs' ? jobsTab : skillsTab)(body);
+  (charTab === 'stats' ? statsTab : charTab === 'jobs' ? jobsTab : charTab === 'look' ? lookTab : skillsTab)(body);
   body.scrollTop = keepScroll;
+}
+let lookDraft = null;
+function lookTab(body) {
+  if (!lookDraft) lookDraft = [...me.look];
+  const cv = document.createElement('canvas'); cv.width = 16; cv.height = 16; cv.className = 'bigprev';
+  drawPrev(cv, lookDraft, visTokens(me.eq), 0);
+  const rows = mkEl('div', 'lookrows');
+  lookRows(rows, lookDraft, () => renderChar());
+  const wrap = mkEl('div', 'creator'); wrap.append(cv, rows);
+  const changed = lookDraft.some((v, i) => v !== me.look[i]);
+  const apply = mkEl('button', '', `Apply new look (${LOOK_COST}g, in town)`);
+  apply.disabled = !changed; apply.onclick = () => { tx({ t: 'look', look: lookDraft }); lookDraft = null; };
+  const reset = mkEl('button', '', 'Undo'); reset.disabled = !changed; reset.onclick = () => { lookDraft = null; renderChar(); };
+  const btns = mkEl('div', 'btnrow'); btns.append(apply, reset);
+  body.append(mkEl('div', 'small', 'Change your skin, hair and eyes. Your equipment is drawn on top of it. You can only do this in the town square.'), wrap, btns);
 }
 function statsTab(body) {
   const pct = me.xpn ? Math.round((me.xp / me.xpn) * 100) : 100;
@@ -720,9 +747,7 @@ function itemTip(it) {
   if (it.s === 'potion') lines.push(`Heals ${it.heal} health`, `Stack: ${it.c}`);
   else {
     lines.push(`<span class="small">${it.s} · req. level ${Math.max(1, it.l - 2)}</span>`);
-    if (it.atk) lines.push(`<span style="color:#ff9a6a">+${it.atk} Attack</span>`);
-    if (it.def) lines.push(`<span style="color:#6ab8ff">+${it.def} Defense</span>`);
-    if (it.hp) lines.push(`<span style="color:#6aff8a">+${it.hp} Health</span>`);
+    for (const sp of statParts(it)) lines.push(`<span style="color:#9fd0ff">${sp}</span>`);
   }
   lines.push(`<span style="color:#ffd23a">Worth ${Math.max(1, Math.floor(it.v * 0.5))}g</span>`);
   return lines.join('<br>');
@@ -731,18 +756,20 @@ function slotEl(it, extra = '') {
   const d = document.createElement('div'); d.className = `slot ${extra}`;
   if (it) {
     d.style.boxShadow = `inset 0 0 0 2px ${RARITY[it.r].c}`;
-    d.innerHTML = `<img src="${iconURL(it.b, it.r)}">${it.c > 1 ? `<span class="cnt">${it.c}</span>` : ''}`;
+    d.innerHTML = `<img src="${iconURL(it.b, it.r, it.cl)}">${it.c > 1 ? `<span class="cnt">${it.c}</span>` : ''}`;
   }
   return d;
 }
 function renderInv() {
   const eq = $('equip'); eq.innerHTML = '';
-  for (const s of ['weapon', 'armor', 'trinket']) {
+  for (const s of EQ_KEYS) {
     const it = me.eq[s]; const d = slotEl(it, 'eq');
-    if (!it) d.insertAdjacentHTML('beforeend', `<span class="lbl">${s}</span>`);
+    if (!it) d.insertAdjacentHTML('beforeend', `<span class="lbl">${EQ_LABEL[s].slice(0, 4).toUpperCase()}</span>`);
+    d.title = it ? itemText(it) : EQ_LABEL[s];
     d.onclick = () => { selSlot = -1; showInfo(it, () => { tx({ t: 'unequip', s }); }, 'Unequip', null); };
     eq.appendChild(d);
   }
+  drawPrev($('invPrev'), me.look, visTokens(me.eq), 0);
   const grid = $('slots'); grid.innerHTML = '';
   me.inv.forEach((it, i) => {
     const d = slotEl(it); if (i === selSlot) d.classList.add('sel');
@@ -796,8 +823,8 @@ function openDialog(m) {
   if (m.shop) {
     m.shop.forEach((it, i) => {
       const row = document.createElement('div'); row.className = 'shopRow';
-      const stats = [it.atk ? `+${it.atk} ATK` : '', it.def ? `+${it.def} DEF` : '', it.hp ? `+${it.hp} HP` : '', it.heal ? `heals ${it.heal}` : ''].filter(Boolean).join(' ');
-      row.innerHTML = `<img src="${iconURL(it.b, it.r)}"><div class="grow"><span style="color:${RARITY[it.r].c}">${esc(it.n)}</span><br><span class="small">${stats}</span></div><span style="color:#ffd23a">${it.price}g</span>`;
+      const stats = statParts(it).join(' ');
+      row.innerHTML = `<img src="${iconURL(it.b, it.r, it.cl)}"><div class="grow"><span style="color:${RARITY[it.r].c}">${esc(it.n)}</span><br><span class="small">${stats}</span></div><span style="color:#ffd23a">${it.price}g</span>`;
       const b = document.createElement('button'); b.textContent = 'Buy'; b.onclick = () => tx({ t: 'buy', i }); row.appendChild(b);
       box.appendChild(row);
     });
@@ -863,7 +890,7 @@ function drawEntity(o, t, tgId) {
       return;
     }
     const fr = o.moving ? [1, 0, 3, 0][Math.floor(t / 110) % 4] : 0;
-    spr = SP.playerSprite(o.c, skinOf(o.i), o.f, fr, o.w, o.wr, o.ar);
+    spr = SP.heroSprite(o.lk, o.vs, o.f, fr);
   } else {
     const fr = o.s === 'bat' ? Math.floor(t / 110) % 2 : o.s === 'slime' ? Math.floor(t / 320) % 2 : o.moving ? Math.floor(t / 160) % 2 : BIG.has(o.s) ? Math.floor(t / 600) % 2 : 0;
     spr = SP.mobSprite(o.s, o.f, HUMANOID.has(o.s) ? (o.moving ? [1, 0, 3, 0][Math.floor(t / 130) % 4] : 0) : fr);
@@ -1058,7 +1085,7 @@ function drawDrop(d, t) {
   const bob = Math.round(Math.sin(t / 300 + d.i) * 1.2);
   const px = d.x * TS - camX, py = d.y * TS - camY;
   shadow(px + 8, py + 13, 8);
-  const icon = d.g ? SP.itemIcon('gold', 0) : SP.itemIcon(d.b, d.r);
+  const icon = d.g ? SP.itemIcon('gold', 0) : SP.itemIcon(d.b, d.r, d.cl);
   wx.drawImage(icon, px, py - 2 + bob);
   if (!d.g && d.r > 0 && Math.floor(t / 200 + d.i) % 3 === 0) { wx.fillStyle = SP.RARITY_COL[d.r]; wx.fillRect(px + 3 + ((d.i * 5) % 9), py + 2 + ((d.i * 3) % 7), 1, 1); }
 }
@@ -1287,9 +1314,45 @@ addEventListener('touchstart', enableTouch, { once: true, passive: true }); // h
 })();
 
 // ------------------------------------------------------------------ login screen
+// ---- character creator (login) and the shared look pickers
+let selLook = (() => { try { const l = JSON.parse(localStorage.getItem('em_look')); return Array.isArray(l) && l.length === 4 ? l : null; } catch { return null; } })() || defaultLook('hero');
+let prevDir = 0;
+function previewVis(job) {
+  const kit = STARTER_KIT[job] || {}, t = (slot) => (kit[slot] ? `${kit[slot][0]}~${kit[slot][1]}~0` : '');
+  return [t('head'), t('body'), t('legs'), t('boots'), '', '', t('offhand'), `${JOBS[job].start}~~0`];
+}
+function drawPrev(cv, look, vs, dir = 0, fr = 0) {
+  const x = cv.getContext('2d');
+  x.clearRect(0, 0, 16, 16);
+  x.drawImage(SP.heroSprite(look, vs, dir, fr), 0, 0);
+}
+const LOOK_PAL = [SKIN_TONES, null, HAIR_COLORS, EYE_COLORS];
+function lookRows(box, look, onChange) {
+  box.innerHTML = '';
+  LOOK_LABELS.forEach((label, i) => {
+    const row = mkEl('div', 'lrow');
+    const prev = mkEl('button', 'x', '&lt;'), next = mkEl('button', 'x', '&gt;');
+    prev.type = next.type = 'button';
+    const sw = mkEl('span', 'sw'); sw.style.background = LOOK_PAL[i] ? LOOK_PAL[i][look[i]] : 'transparent';
+    const step = (d) => { look[i] = (look[i] + d + LOOK_LIMITS[i]) % LOOK_LIMITS[i]; onChange(); };
+    prev.onclick = () => step(-1); next.onclick = () => step(1);
+    row.append(mkEl('span', 'nm', label), prev, mkEl('b', '', `${look[i] + 1}/${LOOK_LIMITS[i]}`), next, sw);
+    box.appendChild(row);
+  });
+}
+const prevCv = $('prev');
+function buildCreator() {
+  lookRows($('lookRows'), selLook, buildCreator);
+  drawPrev(prevCv, selLook, previewVis(selClass), prevDir);
+  try { localStorage.setItem('em_look', JSON.stringify(selLook)); } catch { /* private mode */ }
+}
+$('rnd').onclick = () => { selLook = LOOK_LIMITS.map((n) => Math.floor(Math.random() * n)); buildCreator(); };
+$('turn').onclick = () => { prevDir = [3, 2, 0, 1][prevDir]; buildCreator(); }; // spin: down, right, up, left
+
 const cardsEl = $('classes');
 function selectClass(c) {
   selClass = c;
+  buildCreator();
   [...cardsEl.children].forEach((el) => el.classList.toggle('sel', el.dataset.c === c));
   const J = JOBS[c], first = skillsOfJob(c)[0];
   $('classDesc').innerHTML = `<b style="color:${J.color}">${J.name}</b> <span class="small">${J.role}</span> - ${J.desc}<br>${J.trait}<br>First skill: ${SKILLS[first].name}. You can learn every job later and mix their skills.`;
@@ -1309,7 +1372,7 @@ $('loginForm').addEventListener('submit', (e) => {
   localStorage.setItem('em_name', name);
   $('loginErr').textContent = ''; $('enter').disabled = true;
   if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
-  connect(name, $('pass').value, selClass);
+  connect(name, $('pass').value, selClass, selLook);
 });
 fetch('/api/status').then((r) => r.json()).then((s) => { $('online').textContent = `${s.online} hero${s.online === 1 ? '' : 'es'} online`; }).catch(() => {});
 
