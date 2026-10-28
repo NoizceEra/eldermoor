@@ -93,3 +93,43 @@ input:focus { box-shadow: inset 0 0 0 2px #8a78d8; }
 #dc .panel { padding: 20px; text-align: center; display: flex; flex-direction: column; gap: 10px; }
 
 @media (max-width: 900px) { #chat { width: 56vw; } #chatLog { height: 90px; } #side { width: 110px; } #minimap { width: 110px; height: 110px; } #inv { top: 150px; } #plate { width: 190px; } }
+
+/* ---- touch mode (phones / tablets; enabled by main.js) ---- */
+html, body { overscroll-behavior: none; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+canvas#screen { touch-action: none; }
+#touch { display: none; }
+body.touch #touch { display: block; }
+#joy { position: absolute; left: calc(22px + env(safe-area-inset-left)); bottom: calc(22px + env(safe-area-inset-bottom)); width: 132px; height: 132px; border-radius: 50%; touch-action: none; background: rgba(28,21,48,.5); box-shadow: 0 0 0 3px var(--edge), inset 0 0 0 3px var(--ink); z-index: 3; }
+#knob { position: absolute; left: 50%; top: 50%; width: 54px; height: 54px; margin: -27px 0 0 -27px; border-radius: 50%; background: #8a78d8; box-shadow: inset -5px -5px 0 #5a4a92, inset 4px 4px 0 #b0a0f0, 0 0 0 3px var(--ink); pointer-events: none; }
+#tbtns { position: absolute; right: calc(14px + env(safe-area-inset-right)); bottom: 88px; display: flex; flex-direction: column; gap: 8px; }
+#tbtns button { width: 76px; height: 40px; font-size: 8px; padding: 0; }
+body.touch #skillbar { left: auto; right: calc(14px + env(safe-area-inset-right)); bottom: calc(14px + env(safe-area-inset-bottom)); transform: none; gap: 8px; }
+body.touch .sk { width: 54px; height: 54px; }
+body.touch #plate { left: 10px; top: 10px; width: 170px; padding: 6px; font-size: 8px; }
+body.touch #side { right: 12px; top: 12px; width: 100px; gap: 8px; }
+body.touch #minimap { width: 100px; height: 100px; }
+body.touch #quest { font-size: 7px; padding: 5px; }
+body.touch #targetFrame { top: 112px; left: 10px; transform: none; width: 170px; padding: 6px; }
+body.touch #party { top: 168px; left: 14px; width: 160px; }
+body.touch #chat { left: 14px; bottom: 170px; width: min(62vw, 380px); }
+body.touch #chatLog { height: 72px; font-size: 7px; }
+body.touch #chatIn { display: none; }
+body.touch #chat.open #chatIn { display: block; }
+body.touch #chat.open { bottom: 10px; z-index: 6; width: 94vw; left: 3vw; }
+body.touch #chat.open #chatLog { height: 110px; }
+body.touch #inv { position: fixed; left: 8px; right: 8px; top: 8px; width: auto; max-height: 88vh; overflow: auto; z-index: 5; }
+body.touch #dialog { bottom: 8px; width: 96vw; max-height: 56vh; z-index: 5; }
+body.touch #invite { top: 70px; }
+body.touch .foot { display: none; }
+body.touch button { min-height: 34px; }
+@media (max-height: 520px) { body.touch #tbtns { flex-direction: row; bottom: 80px; right: 12px; } body.touch #tbtns button { width: 60px; } body.touch #chat { bottom: 160px; } }
+@media (max-width: 430px) {
+  #joy { width: 108px; height: 108px; left: 10px; bottom: 14px; }
+  #knob { width: 46px; height: 46px; margin: -23px 0 0 -23px; }
+  body.touch #skillbar { right: 8px; bottom: 14px; gap: 5px; }
+  body.touch .sk { width: 44px; height: 44px; }
+  body.touch .sk img { padding: 4px; }
+  #tbtns { right: 8px; bottom: 70px; }
+  #tbtns button { width: 66px; height: 36px; }
+  body.touch #chat { bottom: 134px; }
+}

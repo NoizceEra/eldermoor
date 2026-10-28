@@ -166,7 +166,7 @@ function onEvent(m) {
       floaters.push({ x: px + (Math.random() * 8 - 4), y: py - 8, txt: m.k === 'h' ? `+${m.v}` : m.k === 'c' ? `${m.v}!` : `${m.v}`, col, t0: t, big: m.k === 'c' });
       const e = ents.get(m.id);
       if (e && m.k !== 'h') e.hitAt = t;
-      if (m.k === 'p') { burst(px, py, ['#ff5a5a', '#a02828'], 6, 28, 350); if (m.id === myId) { shake = 4; sfx.hurt(); } }
+      if (m.k === 'p') { burst(px, py, ['#ff5a5a', '#a02828'], 6, 28, 350); if (m.id === myId) { shake = 4; sfx.hurt(); if (touchMode && navigator.vibrate) navigator.vibrate(25); } }
       else if (m.k === 'm' || m.k === 'c') { burst(px, py, ['#fff', '#ffe066'], m.k === 'c' ? 10 : 5, 30, 260); (m.k === 'c' ? sfx.crit : sfx.hit)(); }
       break;
     }
@@ -536,7 +536,7 @@ function renderInv() {
     d.oncontextmenu = (e) => { e.preventDefault(); primary(i); };
     grid.appendChild(d);
   });
-  $('invGold').innerHTML = `Gold: <span style="color:#ffd23a">${me.gold}</span> &nbsp; (right-click to use/equip)`;
+  $('invGold').innerHTML = `Gold: <span style="color:#ffd23a">${me.gold}</span> &nbsp; (${touchMode ? 'tap an item, then Equip' : 'right-click to use/equip'})`;
   const it = me.inv[selSlot];
   if (it) showInfo(it, () => primary(selSlot), it.s === 'potion' ? 'Drink' : 'Equip', selSlot);
   else if (selSlot < 0 && !$('itemInfo').dataset.keep) $('itemInfo').innerHTML = '<span class="small">Select an item.</span>';
@@ -855,7 +855,7 @@ function render(t, dt) {
 }
 
 function drawLabels(t) {
-  const fs = Math.max(8, S * 3);
+  const fs = Math.max(touchMode ? 10 : 8, S * 3);
   sctx.font = `${fs}px "Press Start 2P", "Lucida Console", monospace`;
   sctx.textAlign = 'center'; sctx.textBaseline = 'alphabetic';
   sctx.lineJoin = 'round';
@@ -927,6 +927,56 @@ function tickFrame() {
   }
   render(t, dt);
 }
+
+// ------------------------------------------------------------------ touch controls
+let touchMode = false;
+function enableTouch() {
+  if (touchMode) return;
+  touchMode = true;
+  document.body.classList.add('touch');
+  resize();
+}
+if (matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0) enableTouch();
+addEventListener('touchstart', enableTouch, { once: true, passive: true }); // hybrid laptops
+
+(() => {
+  const joy = $('joy'), knob = $('knob');
+  const MOVE = ['w', 'a', 's', 'd'];
+  let pid = null, axis = '';
+  const release = () => { MOVE.forEach((k) => keys.delete(k)); axis = ''; knob.style.transform = ''; };
+  const drive = (ev) => {
+    const r = joy.getBoundingClientRect();
+    let dx = ev.clientX - (r.left + r.width / 2), dy = ev.clientY - (r.top + r.height / 2);
+    const len = Math.hypot(dx, dy), max = r.width / 2 - 10;
+    if (len > max) { dx = (dx / len) * max; dy = (dy / len) * max; }
+    knob.style.transform = `translate(${dx}px, ${dy}px)`;
+    MOVE.forEach((k) => keys.delete(k));
+    if (len < 14) { axis = ''; return; }
+    const horiz = Math.abs(dx) > Math.abs(dy) * (axis === 'v' ? 1.35 : axis === 'h' ? 0.74 : 1);
+    axis = horiz ? 'h' : 'v';
+    keys.add(horiz ? (dx < 0 ? 'a' : 'd') : (dy < 0 ? 'w' : 's'));
+  };
+  joy.addEventListener('pointerdown', (ev) => {
+    if (pid !== null) return;
+    pid = ev.pointerId; joy.setPointerCapture(pid); ev.preventDefault();
+    if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+    drive(ev);
+  });
+  joy.addEventListener('pointermove', (ev) => { if (ev.pointerId === pid) drive(ev); });
+  const end = (ev) => { if (ev.pointerId === pid) { pid = null; release(); } };
+  joy.addEventListener('pointerup', end);
+  joy.addEventListener('pointercancel', end);
+  joy.addEventListener('contextmenu', (e) => e.preventDefault());
+
+  const acts = {
+    pack: toggleInv,
+    talk: interact,
+    tgt: cycleTarget,
+    chat: () => { $('chat').classList.add('open'); $('chatIn').focus(); },
+  };
+  $('tbtns').addEventListener('click', (e) => { const a = e.target.dataset && e.target.dataset.act; if (a && acts[a]) acts[a](); });
+  $('chatIn').addEventListener('blur', () => setTimeout(() => $('chat').classList.remove('open'), 150));
+})();
 
 // ------------------------------------------------------------------ login screen
 const cardsEl = $('classes');

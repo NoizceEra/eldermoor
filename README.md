@@ -30,6 +30,8 @@ Open the URL in several tabs to play together. Heroes persist in `data/saves.jso
 | `/invite NAME`, `/leave`, `/kick NAME`, `/p TEXT` | party commands and party chat |
 | M | mute |
 
+**Phones / tablets:** touch mode switches on automatically - on-screen joystick, tap to move/attack/talk/loot, big skill buttons, CHAT / TARGET / TALK / PACK buttons, full-width pack and dialog sheets.
+
 ## What's in it
 
 - 128x128 island generated from a seed shared by client and server (meadow, forest, swamp, lakes, roads, walled town, two ruins).
@@ -50,4 +52,4 @@ scripts/smoke.mjs headless end-to-end test
 
 ## Ideas next
 
-Touch controls, dungeon instances, trading, more zones/dungeons, player-vs-player arenas, mounts, crafting, bank, touch controls.
+Dungeon instances, trading, more zones/dungeons, player-vs-player arenas, mounts, crafting, bank, touch controls.
