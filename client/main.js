@@ -45,7 +45,8 @@ let selClass = 'warrior', selSlot = -1, shopOpen = false, dialogNpc = 0;
 const chatLines = [];
 let party = { id: 0, leader: 0, members: [] };
 const pmData = new Map(); // member id -> { h, mh, x, y } from the server's party tick
-let pendingInvite = null; // { from, name, until } or { offer: playerId, name }
+let pendingInvite = null; // incoming party { from, name, until } | incoming trade { kind:'trade', from, name, until } | player menu { menu: id, name }
+let tradeView = null; // latest server state of the open trade window
 const inParty = (id) => party.members.some((m) => m.id === id);
 const skinOf = (id) => id % 4;
 const now = () => performance.now();
@@ -119,6 +120,20 @@ function onMsg(m) {
     case 'me': me = m; onMe(); break;
     case 'log': addLine(`<span style="color:${m.c}">${esc(m.m)}</span>`); break;
     case 'zone': applyZone(m); break;
+    case 'trade_inv':
+      pendingInvite = { kind: 'trade', from: m.from, name: m.name, until: now() + 30000 };
+      showInvite(); sfx.click();
+      break;
+    case 'trade':
+      tradeView = m; renderTrade();
+      if (innerWidth > 900) $('inv').classList.remove('hidden'); // wide screens: window and pack sit side by side
+      if (me) renderInv();
+      break;
+    case 'trade_end':
+      tradeView = null; $('trade').classList.add('hidden'); $('inv').classList.remove('front');
+      if (m.ok) { sfx.coin(); banner('TRADE COMPLETE'); } else toast(`Trade cancelled: ${m.why}`);
+      if (me) renderInv();
+      break;
     case 'party': party = m; pmData.clear(); renderParty(); break;
     case 'pm': for (const r of m.m) pmData.set(r.id, r); renderParty(); break;
     case 'pinv':
@@ -353,7 +368,7 @@ screen.addEventListener('mousedown', (ev) => {
     goal = { type: 'ent', id: hit.e.i, range: rng, then: 'chase' };
     sfx.click();
   } else if (hit.kind === 'p') {
-    if (!inParty(hit.e.i) && (!party.id || party.leader === myId)) { pendingInvite = { offer: hit.e.i, name: hit.e.n }; showInvite(); }
+    pendingInvite = { menu: hit.e.i, name: hit.e.n }; showInvite();
   } else if (hit.kind === 'n') {
     goal = { type: 'ent', id: hit.e.id, range: 2.3, then: 'talk' };
   } else if (hit.kind === 'd') {
@@ -387,8 +402,8 @@ addEventListener('keydown', (e) => {
   else if (k === 'e') interact();
   else if (k === 'm') { muted = !muted; localStorage.setItem('em_mute', muted ? '1' : '0'); toast(muted ? 'Sound off' : 'Sound on'); }
   else if (k === 'tab' || k === ' ') cycleTarget();
-  else if ((k === 'y' || k === 'n') && pendingInvite) answerInvite(k === 'y');
-  else if (k === 'escape') { if (pendingInvite && pendingInvite.offer) { pendingInvite = null; showInvite(); } closeDialog(); $('inv').classList.add('hidden'); tx({ t: 'target', id: 0 }); goal = null; }
+  else if ((k === 'y' || k === 'n') && pendingInvite && !pendingInvite.menu) answerInvite(k === 'y');
+  else if (k === 'escape') { if (pendingInvite && pendingInvite.menu) { pendingInvite = null; showInvite(); } if (tradeView) tx({ t: 'trade_cancel' }); closeDialog(); $('inv').classList.add('hidden'); tx({ t: 'target', id: 0 }); goal = null; }
 });
 addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
 addEventListener('blur', () => keys.clear());
@@ -398,28 +413,101 @@ function sendChat(v) {
   const arg = (cmd) => v.slice(cmd.length).trim();
   if (v.startsWith('/invite ')) tx({ t: 'pinvite', name: arg('/invite') });
   else if (v === '/leave') tx({ t: 'pleave' });
+  else if (v.startsWith('/trade ')) tx({ t: 'trade_req', name: arg('/trade') });
   else if (v.startsWith('/kick ')) {
     const t = party.members.find((m) => m.name.toLowerCase() === arg('/kick').toLowerCase());
     if (t) tx({ t: 'pkick', id: t.id }); else addLine('<span style="color:#ff8a8a">Nobody in your party has that name.</span>');
   } else if (v.startsWith('/p ')) tx({ t: 'chat', m: arg('/p'), ch: 'party' });
-  else if (v === '/help') addLine('<span style="color:#9fd0ff">/invite NAME, /leave, /kick NAME, /p TEXT (party chat), /who</span>');
+  else if (v === '/help') addLine('<span style="color:#9fd0ff">/invite NAME, /leave, /kick NAME, /p TEXT (party chat), /trade NAME, /who</span>');
   else tx({ t: 'chat', m: v });
 }
 function answerInvite(ok) {
   const inv = pendingInvite;
   pendingInvite = null; showInvite();
-  if (!inv) return;
-  if (inv.offer) { if (ok) tx({ t: 'pinvite', name: inv.name }); } else tx({ t: 'pgo', ok });
+  if (!inv || inv.menu) return;
+  if (inv.kind === 'trade') tx({ t: 'trade_ans', ok });
+  else tx({ t: 'pgo', ok });
 }
 function showInvite() {
   const box = $('invite');
-  if (!pendingInvite) { box.classList.add('hidden'); return; }
-  const o = pendingInvite.offer;
-  box.innerHTML = `<div>${o ? `Invite <b style="color:#6ab8ff">${esc(pendingInvite.name)}</b> to your party?` : `<b style="color:#6ab8ff">${esc(pendingInvite.name)}</b> invites you to a party`}</div>
-    <div class="btns"><button data-a="1">${o ? 'Invite (Y)' : 'Accept (Y)'}</button><button data-a="0">${o ? 'Cancel (N)' : 'Decline (N)'}</button></div>`;
+  const inv = pendingInvite;
+  if (!inv) { box.classList.add('hidden'); return; }
+  const nm = `<b style="color:#6ab8ff">${esc(inv.name)}</b>`;
+  if (inv.menu) {
+    box.innerHTML = `<div>${nm}</div><div class="btns"><button data-a="party">Party invite</button><button data-a="trade">Trade</button><button data-a="no">Cancel</button></div>`;
+    box.querySelectorAll('button').forEach((bt) => {
+      bt.onclick = () => {
+        const a = bt.dataset.a;
+        pendingInvite = null; showInvite();
+        if (a === 'party') tx({ t: 'pinvite', name: inv.name });
+        else if (a === 'trade') tx({ t: 'trade_req', name: inv.name });
+      };
+    });
+  } else {
+    const what = inv.kind === 'trade' ? 'wants to trade with you' : 'invites you to a party';
+    box.innerHTML = `<div>${nm} ${what}</div><div class="btns"><button data-a="1">Accept (Y)</button><button data-a="0">Decline (N)</button></div>`;
+    box.querySelectorAll('button').forEach((bt) => { bt.onclick = () => answerInvite(bt.dataset.a === '1'); });
+  }
   box.classList.remove('hidden');
-  box.querySelectorAll('button').forEach((b) => { b.onclick = () => answerInvite(b.dataset.a === '1'); });
 }
+
+// ---- trading
+const offerUids = () => (tradeView ? tradeView.me.items.map((i) => i.u) : []);
+function sendOffer(uids, gold) {
+  tx({ t: 'trade_offer', items: uids, gold: gold === undefined ? (tradeView ? tradeView.me.gold : 0) : gold });
+}
+function toggleOffer(u) {
+  const cur = offerUids();
+  sendOffer(cur.includes(u) ? cur.filter((x) => x !== u) : [...cur, u]);
+}
+const itemText = (it) => `${it.n} (${RARITY[it.r].n})${it.atk ? ` +${it.atk} ATK` : ''}${it.def ? ` +${it.def} DEF` : ''}${it.hp ? ` +${it.hp} HP` : ''}${it.heal ? ` heals ${it.heal}` : ''}${it.c > 1 ? ` x${it.c}` : ''}`;
+function renderTrade() {
+  const v = tradeView, box = $('trade');
+  if (!v) { box.classList.add('hidden'); return; }
+  const both = v.me.lock && v.them.lock;
+  const slots = (list, mine) => {
+    const wrap = document.createElement('div'); wrap.className = 'tslots';
+    for (let i = 0; i < 6; i++) {
+      const it = list[i]; const d = slotEl(it || null);
+      if (it) { d.title = itemText(it); if (mine) d.onclick = () => toggleOffer(it.u); }
+      wrap.appendChild(d);
+    }
+    return wrap;
+  };
+  box.innerHTML = '';
+  const head = document.createElement('div'); head.className = 'row';
+  head.innerHTML = `<b>Trade with <span style="color:#6ab8ff">${esc(v.them.name)}</span></b>`;
+  const x = document.createElement('button'); x.className = 'x'; x.textContent = 'x'; x.onclick = () => tx({ t: 'trade_cancel' }); head.appendChild(x);
+  const cols = document.createElement('div'); cols.className = 'cols';
+  const mine = document.createElement('div'); mine.className = 'col';
+  mine.innerHTML = '<div class="small">You offer (tap pack items to add)</div>';
+  mine.appendChild(slots(v.me.items, true));
+  const g = document.createElement('input'); g.type = 'number'; g.min = 0; g.max = me ? me.gold : 0; g.value = v.me.gold; g.title = 'Gold to offer';
+  g.onchange = () => sendOffer(offerUids(), Math.max(0, Math.floor(Number(g.value) || 0)));
+  const gl = document.createElement('div'); gl.className = 'small'; gl.textContent = 'Gold:';
+  mine.append(gl, g);
+  const ms = document.createElement('div'); ms.className = `state ${v.me.ok ? 'on' : ''}`; ms.textContent = v.me.ok ? 'CONFIRMED' : v.me.lock ? 'LOCKED' : '';
+  mine.appendChild(ms);
+  const them = document.createElement('div'); them.className = 'col them';
+  them.innerHTML = `<div class="small">${esc(v.them.name)} offers</div>`;
+  them.appendChild(slots(v.them.items, false));
+  const tg = document.createElement('div'); tg.innerHTML = `<div class="small">Gold:</div><div style="color:#ffd23a;padding:5px 0">${v.them.gold}</div>`;
+  them.appendChild(tg);
+  const ts = document.createElement('div'); ts.className = `state ${v.them.ok ? 'on' : ''}`; ts.textContent = v.them.ok ? 'CONFIRMED' : v.them.lock ? 'LOCKED' : '';
+  them.appendChild(ts);
+  cols.append(mine, them);
+  const btns = document.createElement('div'); btns.className = 'btns';
+  const mk = (txt, fn, dis) => { const b = document.createElement('button'); b.textContent = txt; b.onclick = fn; if (dis) b.disabled = true; btns.appendChild(b); };
+  if (!both) mk(v.me.lock ? 'Locked - waiting...' : 'Lock offer', () => tx({ t: 'trade_lock' }), v.me.lock);
+  else mk(v.me.ok ? `Waiting for ${v.them.name}...` : 'Confirm trade', () => tx({ t: 'trade_confirm' }), v.me.ok);
+  mk('Pack', () => { const inv = $('inv'); inv.classList.toggle('hidden'); inv.classList.add('front'); if (me) renderInv(); });
+  mk('Cancel', () => tx({ t: 'trade_cancel' }));
+  const note = document.createElement('div'); note.className = 'note';
+  note.textContent = 'Both sides lock their offers, then both confirm. Changing an offer unlocks everyone.';
+  box.append(head, cols, btns, note);
+  box.classList.remove('hidden');
+}
+
 function renderParty() {
   const el = $('party');
   el.innerHTML = '';
@@ -505,6 +593,7 @@ function onMe() {
   $('death').classList.toggle('hidden', me.hp > 0);
   renderQuest();
   if (!$('inv').classList.contains('hidden')) renderInv();
+  if (tradeView) renderTrade();
   const tg = me.tg && ents.get(me.tg);
   $('targetFrame').classList.toggle('hidden', !tg);
 }
@@ -549,9 +638,12 @@ function renderInv() {
   const grid = $('slots'); grid.innerHTML = '';
   me.inv.forEach((it, i) => {
     const d = slotEl(it); if (i === selSlot) d.classList.add('sel');
-    d.onclick = () => { selSlot = i; renderInv(); };
-    d.ondblclick = () => primary(i);
-    d.oncontextmenu = (e) => { e.preventDefault(); primary(i); };
+    if (tradeView && it) {
+      d.title = itemText(it);
+      if (tradeView.me.items.some((o) => o.u === it.u)) d.classList.add('offered');
+      d.onclick = () => toggleOffer(it.u);
+    } else d.onclick = () => { selSlot = i; renderInv(); };
+    if (!tradeView) { d.ondblclick = () => primary(i); d.oncontextmenu = (e) => { e.preventDefault(); primary(i); }; }
     grid.appendChild(d);
   });
   $('invGold').innerHTML = `Gold: <span style="color:#ffd23a">${me.gold}</span> &nbsp; (${touchMode ? 'tap an item, then Equip' : 'right-click to use/equip'})`;
@@ -946,6 +1038,7 @@ function drawMinimap(t) {
 let last = now();
 function frame() { tickFrame(); requestAnimationFrame(frame); }
 function tickFrame() {
+  if (!VW || !VH) return; // viewport collapsed (hidden pane / minimised): nothing to draw
   const t = now(), dt = Math.min(0.1, (t - last) / 1000); last = t;
   stepEntities(dt, t);
   if (inGame) {

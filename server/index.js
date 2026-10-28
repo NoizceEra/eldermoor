@@ -202,7 +202,7 @@ function login(ws, m) {
   for (const old of players.values()) if (old.name.toLowerCase() === k) { old.ws.close(4000, 'Logged in elsewhere'); dropPlayer(old); }
   p.id = nextId++; p.k = 'p'; p.ws = ws; p.f = 0; p.dead = false; p.target = null;
   p.moveAt = 0; p.atkAt = 0; p.potAt = 0; p.want = null; p.lastHit = 0; p.regenAt = 0; p.dirty = true; p.msgs = 0;
-  p.chatAt = 0; p.sprintUntil = 0; p.party = 0; p.invite = null; p.invAt = 0;
+  p.chatAt = 0; p.sprintUntil = 0; p.party = 0; p.invite = null; p.invAt = 0; p.trade = 0; p.tradeInv = null; p.trAt = 0;
   computeStats(p);
   if (!saved) p.hp = p.st.mh;
   p.z = overworld; p.ret = { x: CAMP.x, y: CAMP.y + 2 };
@@ -293,6 +293,7 @@ function partyAnswer(p, ok, now) {
 function dropPlayer(p) {
   if (!players.has(p.id)) return;
   leaveParty(p, 'disconnected');
+  { const tr = tradeOf(p); if (tr) endTrade(tr, `${p.name} disconnected`); }
   savePlayer(p);
   writeSaves();
   unplace(p);
@@ -354,6 +355,7 @@ function hurtPlayer(p, raw, from) {
   p.dirty = true;
   if (p.hp <= 0) {
     p.hp = 0; p.dead = true; p.respawnAt = Date.now() + 4000; p.target = null; p.want = null;
+    { const tr = tradeOf(p); if (tr) endTrade(tr, `${p.name} died`); }
     emit(p.z, p.x, p.y, { e: 'fx', k: 'die', x: p.x, y: p.y, id: p.id });
     log(p, `You were slain by ${from}. Returning to town...`, '#ff6a6a');
   }
@@ -647,6 +649,7 @@ const zoneMsg = (z) => ({
 });
 
 function moveToZone(p, z, x, y) {
+  { const tr = tradeOf(p); if (tr) endTrade(tr, 'you left the area'); }
   unplace(p);
   p.z = z; p.x = x; p.y = y; place(p);
   p.target = null; p.want = null; p.dirty = true;
@@ -719,11 +722,133 @@ function debugCmd(p, m) {
     if (free(p.z, x, y)) { unplace(p); p.x = x; p.y = y; place(p); }
   }
   if (m.atkMul) p.dbgMul = Number(m.atkMul) || 0;
+  if (m.gold) p.gold += m.gold | 0;
+  if (m.give) for (let i = 0; i < (m.n || 1); i++) addItem(p, m.give === 'potion' ? mkPotion(false) : mkGear(m.give, 10, Number.isInteger(m.r) ? m.r : 2));
   if (m.god) p.god = true;
   if (m.lvl) p.lvl = Math.max(1, Math.min(MAX_LEVEL, m.lvl | 0));
   computeStats(p);
   if (m.god || m.lvl) p.hp = p.st.mh;
   p.dirty = true;
+}
+
+// ---------------------------------------------------------------- trading
+// Two-phase, server-authoritative: both sides set offers, both LOCK, both CONFIRM, then one synchronous
+// swap re-validates everything. Any offer change clears every lock/confirm. Items are named by their
+// unique id (u) and looked up in the owner's pack at swap time, so nothing the client says is trusted.
+const trades = new Map();
+let nextTrade = 1;
+const MAX_OFFER = 6, TRADE_RANGE = 10;
+const tradeOf = (p) => (p.trade ? trades.get(p.trade) : null);
+const sideOf = (t, p) => (t.a === p.id ? t.sa : t.sb);
+const otherOf = (t, p) => players.get(t.a === p.id ? t.b : t.a);
+
+function tradeView(t, viewer) {
+  const mk = (q, side) => ({
+    id: q.id, name: q.name, gold: side.gold, lock: side.lock, ok: side.ok,
+    items: side.items.map((uid) => q.inv.find((i) => i && i.u === uid)).filter(Boolean),
+  });
+  const o = otherOf(t, viewer);
+  return { t: 'trade', me: mk(viewer, sideOf(t, viewer)), them: mk(o, sideOf(t, o)) };
+}
+function pushTrade(t) {
+  for (const id of [t.a, t.b]) { const q = players.get(id); if (q) send(q, tradeView(t, q)); }
+}
+function endTrade(t, why, done = false) {
+  trades.delete(t.id);
+  for (const id of [t.a, t.b]) {
+    const q = players.get(id);
+    if (!q) continue;
+    q.trade = 0;
+    send(q, { t: 'trade_end', why, ok: done });
+    log(q, done ? why : `Trade cancelled: ${why}`, done ? '#6aff8a' : '#ff9a6a');
+  }
+}
+const canTrade = (a, b) => a && b && a !== b && !a.dead && !b.dead && a.z === b.z && dist(a, b) <= TRADE_RANGE;
+
+function tradeRequest(p, name, now) {
+  if (now - (p.trAt || 0) < 2000) return;
+  p.trAt = now;
+  const t = findPlayer(name);
+  if (!t) return log(p, 'No hero by that name is online.', '#ff8a8a');
+  if (t === p) return log(p, "You can't trade with yourself.", '#ff8a8a');
+  if (p.trade || t.trade) return log(p, p.trade ? 'You are already trading.' : `${t.name} is already trading.`, '#ff8a8a');
+  if (!canTrade(p, t)) return log(p, `${t.name} is too far away.`, '#ff8a8a');
+  if (t.tradeInv && t.tradeInv.until > now) return log(p, `${t.name} already has a trade request.`, '#ff8a8a');
+  t.tradeInv = { from: p.id, until: now + 30000 };
+  send(t, { t: 'trade_inv', from: p.id, name: p.name });
+  log(p, `Trade request sent to ${t.name}.`, '#9fd0ff');
+}
+function tradeAnswer(p, ok, now) {
+  const inv = p.tradeInv;
+  p.tradeInv = null;
+  if (!inv || inv.until < now) return log(p, 'That trade request has expired.', '#ff8a8a');
+  const from = players.get(inv.from);
+  if (!from) return log(p, 'The other hero is gone.', '#ff8a8a');
+  if (!ok) return log(from, `${p.name} declined to trade.`, '#9fd0ff');
+  if (p.trade || from.trade) return log(p, 'Someone is already trading.', '#ff8a8a');
+  if (!canTrade(p, from)) return log(p, 'You are too far apart.', '#ff8a8a');
+  const t = { id: nextTrade++, a: from.id, b: p.id, sa: { items: [], gold: 0, lock: false, ok: false }, sb: { items: [], gold: 0, lock: false, ok: false } };
+  trades.set(t.id, t); from.trade = p.trade = t.id;
+  pushTrade(t);
+}
+function tradeOffer(p, items, gold) {
+  const t = tradeOf(p);
+  if (!t) return;
+  const uids = [];
+  for (const raw of Array.isArray(items) ? items.slice(0, 20) : []) {
+    const u = Number(raw);
+    if (!Number.isInteger(u) || uids.includes(u) || !p.inv.some((i) => i && i.u === u)) continue; // owned, no duplicates
+    uids.push(u);
+    if (uids.length >= MAX_OFFER) break;
+  }
+  const side = sideOf(t, p);
+  side.items = uids;
+  side.gold = Math.max(0, Math.min(p.gold, Math.floor(Number(gold) || 0)));
+  t.sa.lock = t.sb.lock = t.sa.ok = t.sb.ok = false; // any change resets both sides
+  pushTrade(t);
+}
+function tradeLock(p) {
+  const t = tradeOf(p);
+  if (!t) return;
+  const s = sideOf(t, p);
+  s.lock = true; s.ok = false;
+  pushTrade(t);
+}
+function tradeConfirm(p) {
+  const t = tradeOf(p);
+  if (!t || !(t.sa.lock && t.sb.lock)) return;
+  sideOf(t, p).ok = true;
+  if (t.sa.ok && t.sb.ok) executeTrade(t); else pushTrade(t);
+}
+
+function executeTrade(t) {
+  const A = players.get(t.a), B = players.get(t.b);
+  if (!canTrade(A, B)) return endTrade(t, 'you are no longer in range');
+  const pull = (q, side) => side.items.map((uid) => q.inv.findIndex((i) => i && i.u === uid));
+  const ia = pull(A, t.sa), ib = pull(B, t.sb);
+  if (ia.includes(-1) || ib.includes(-1)) return endTrade(t, 'an offered item is no longer in the pack');
+  if (A.gold < t.sa.gold || B.gold < t.sb.gold) return endTrade(t, 'not enough gold');
+  const freeAfter = (q, out, inc) => q.inv.filter((i) => i === null).length + out.length >= inc.length;
+  if (!freeAfter(A, ia, ib) || !freeAfter(B, ib, ia)) return endTrade(t, 'not enough pack space');
+  const fromA = ia.map((i) => A.inv[i]), fromB = ib.map((i) => B.inv[i]);
+  for (const i of ia) A.inv[i] = null;
+  for (const i of ib) B.inv[i] = null;
+  for (const it of fromB) addItem(A, it);
+  for (const it of fromA) addItem(B, it);
+  A.gold += t.sb.gold - t.sa.gold;
+  B.gold += t.sa.gold - t.sb.gold;
+  A.dirty = B.dirty = true;
+  savePlayer(A); savePlayer(B); writeSaves();
+  console.log(`[trade] ${A.name} gave ${fromA.map((i) => i.n).join(', ') || '-'} + ${t.sa.gold}g; ${B.name} gave ${fromB.map((i) => i.n).join(', ') || '-'} + ${t.sb.gold}g`);
+  endTrade(t, 'Trade complete.', true);
+}
+
+function checkTrades() {
+  for (const t of [...trades.values()]) {
+    const A = players.get(t.a), B = players.get(t.b);
+    if (!A || !B) endTrade(t, 'the other hero left');
+    else if (!canTrade(A, B)) endTrade(t, 'you moved too far apart');
+  }
 }
 
 // ---------------------------------------------------------------- npc interaction
@@ -756,6 +881,8 @@ function onMessage(ws, raw) {
   if (!p || !players.has(p.id)) return;
   if (++p.msgs > 400) return; // flood guard, reset every second
   const now = Date.now();
+  // anything that changes the pack is frozen while a trade is open (the swap re-validates anyway)
+  if (p.trade && ['drop', 'sell', 'equip', 'unequip', 'use', 'buy'].includes(m.t)) return log(p, 'Finish or cancel your trade first.', '#ff8a8a');
   switch (m.t) {
     case 'move': {
       if (p.dead) return;
@@ -866,6 +993,12 @@ function onMessage(ws, raw) {
       p.dirty = true;
       break;
     }
+    case 'trade_req': tradeRequest(p, m.name, now); break;
+    case 'trade_ans': tradeAnswer(p, !!m.ok, now); break;
+    case 'trade_offer': tradeOffer(p, m.items, m.gold); break;
+    case 'trade_lock': tradeLock(p); break;
+    case 'trade_confirm': tradeConfirm(p); break;
+    case 'trade_cancel': { const t = tradeOf(p); if (t) endTrade(t, `${p.name} cancelled`); break; }
     case 'dbg': if (DEBUG) debugCmd(p, m); break;
     case 'drop': {
       const i = m.slot | 0;
@@ -932,6 +1065,7 @@ function tick() {
     for (const d of z.drops.values()) if (now > d.exp) z.drops.delete(d.id);
   }
   if (tickN % 20 === 0) reapInstances(now);
+  if (tickN % 10 === 0) checkTrades();
   if (tickN % 2 === 0) broadcast(now);
   if (tickN % 10 === 0) partyTick();
 }
@@ -943,7 +1077,7 @@ const server = http.createServer((req, res) => {
   if (url === '/') url = '/client/index.html';
   if (url === '/api/status') {
     res.writeHead(200, { 'content-type': 'application/json' });
-    return res.end(JSON.stringify({ name: 'eldermoor', online: players.size, parties: parties.size, instances: instances.size, mobs: liveMobs(overworld).length, uptime: Math.round(process.uptime()) }));
+    return res.end(JSON.stringify({ name: 'eldermoor', online: players.size, parties: parties.size, instances: instances.size, trades: trades.size, mobs: liveMobs(overworld).length, uptime: Math.round(process.uptime()) }));
   }
   if (!url.startsWith('/client/') && !url.startsWith('/shared/')) { res.writeHead(404); return res.end('not found'); }
   const file = path.join(ROOT, url);
