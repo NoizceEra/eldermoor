@@ -11,7 +11,7 @@ import {
 } from '../shared/data.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const SAVE_FILE = path.join(ROOT, 'data', 'saves.json');
+const SAVE_FILE = process.env.EM_SAVE || path.join(ROOT, 'data', 'saves.json');
 const PORT = Number(process.env.PORT) || 3000;
 
 // ---------------------------------------------------------------- helpers
@@ -30,6 +30,7 @@ const mobs = new Map();
 const drops = new Map();
 const occ = new Map(); // tile -> entity (players, mobs, npcs)
 const npcs = NPCS.map((n) => ({ ...n, k: 'n' }));
+const npcByRole = (role) => npcs.find((n) => n.role === role);
 for (const n of npcs) occ.set(key(n.x, n.y), n);
 
 const place = (e) => occ.set(key(e.x, e.y), e);
@@ -187,7 +188,7 @@ function login(ws, m) {
   for (const old of players.values()) if (old.name.toLowerCase() === k) { old.ws.close(4000, 'Logged in elsewhere'); dropPlayer(old); }
   p.id = nextId++; p.k = 'p'; p.ws = ws; p.f = 0; p.dead = false; p.target = null;
   p.moveAt = 0; p.atkAt = 0; p.potAt = 0; p.want = null; p.lastHit = 0; p.regenAt = 0; p.dirty = true; p.msgs = 0;
-  p.chatAt = 0; p.sprintUntil = 0;
+  p.chatAt = 0; p.sprintUntil = 0; p.party = 0; p.invite = null; p.invAt = 0;
   computeStats(p);
   if (!saved) p.hp = p.st.mh;
   const spot = nearestFree(saved ? p.x : world.spawn.x, saved ? p.y : world.spawn.y) || nearestFree(world.spawn.x, world.spawn.y);
@@ -206,8 +207,77 @@ function login(ws, m) {
   savePlayer(p);
 }
 
+// ---------------------------------------------------------------- parties
+const MAX_PARTY = 4;
+const parties = new Map(); // id -> { id, leader, members:Set<playerId> }
+let nextParty = 1;
+const partyOf = (p) => (p.party ? parties.get(p.party) : null);
+const partyMsg = (pt) => ({
+  t: 'party', id: pt ? pt.id : 0, leader: pt ? pt.leader : 0,
+  members: pt ? [...pt.members].map((id) => players.get(id)).filter(Boolean).map((q) => ({ id: q.id, name: q.name, cls: q.cls, lvl: q.lvl })) : [],
+});
+function pushParty(pt) {
+  const msg = partyMsg(pt);
+  for (const id of pt.members) { const q = players.get(id); if (q) send(q, msg); }
+}
+function leaveParty(p, why = 'left the party') {
+  const pt = partyOf(p);
+  if (!pt) return;
+  pt.members.delete(p.id); p.party = 0;
+  send(p, partyMsg(null));
+  if (pt.members.size < 2) {
+    for (const id of pt.members) { const q = players.get(id); if (q) { q.party = 0; send(q, partyMsg(null)); log(q, `${p.name} ${why}. The party disbanded.`, '#9fd0ff'); } }
+    parties.delete(pt.id);
+    return;
+  }
+  if (pt.leader === p.id) pt.leader = pt.members.values().next().value;
+  for (const id of pt.members) { const q = players.get(id); if (q) log(q, `${p.name} ${why}.`, '#9fd0ff'); }
+  pushParty(pt);
+}
+function partyTick() {
+  for (const pt of parties.values()) {
+    const m = [...pt.members].map((id) => players.get(id)).filter(Boolean).map((q) => ({ id: q.id, h: q.hp, mh: q.st.mh, x: q.x, y: q.y }));
+    for (const id of pt.members) { const q = players.get(id); if (q) send(q, { t: 'pm', m }); }
+  }
+}
+const findPlayer = (name) => [...players.values()].find((q) => q.name.toLowerCase() === String(name || '').trim().toLowerCase());
+function partyInvite(p, name, now) {
+  if (now - (p.invAt || 0) < 2000) return;
+  p.invAt = now;
+  const t = findPlayer(name);
+  if (!t) return log(p, 'No hero by that name is online.', '#ff8a8a');
+  if (t === p) return log(p, "You can't invite yourself.", '#ff8a8a');
+  const mine = partyOf(p);
+  if (mine && mine.leader !== p.id) return log(p, 'Only the party leader can invite.', '#ff8a8a');
+  if (mine && mine.members.size >= MAX_PARTY) return log(p, 'Your party is full.', '#ff8a8a');
+  if (t.party) return log(p, `${t.name} is already in a party.`, '#ff8a8a');
+  if (t.invite && t.invite.until > now) return log(p, `${t.name} already has a pending invite.`, '#ff8a8a');
+  t.invite = { from: p.id, until: now + 30000 };
+  send(t, { t: 'pinv', from: p.id, name: p.name });
+  log(p, `Invited ${t.name} to your party.`, '#9fd0ff');
+}
+function partyAnswer(p, ok, now) {
+  const inv = p.invite;
+  p.invite = null;
+  if (!inv || inv.until < now) return log(p, 'That invite has expired.', '#ff8a8a');
+  const from = players.get(inv.from);
+  if (!from) return log(p, 'The inviter is gone.', '#ff8a8a');
+  if (!ok) return log(from, `${p.name} declined your invite.`, '#9fd0ff');
+  if (p.party) return;
+  let pt = partyOf(from);
+  if (pt && pt.members.size >= MAX_PARTY) return log(p, 'That party is full.', '#ff8a8a');
+  if (!pt) {
+    pt = { id: nextParty++, leader: from.id, members: new Set([from.id]) };
+    parties.set(pt.id, pt); from.party = pt.id;
+  }
+  pt.members.add(p.id); p.party = pt.id;
+  for (const id of pt.members) { const q = players.get(id); if (q) log(q, `${p.name} joined the party.`, '#9fd0ff'); }
+  pushParty(pt);
+}
+
 function dropPlayer(p) {
   if (!players.has(p.id)) return;
+  leaveParty(p, 'disconnected');
   savePlayer(p);
   writeSaves();
   unplace(p);
@@ -410,10 +480,21 @@ function killMob(m, killer) {
   dropLoot(m);
   let total = 0;
   for (const v of m.dmgBy.values()) total += v;
+  // XP share per player. Party members in range split the kill (with a group bonus), contributor or not.
+  const credit = new Map();
   for (const [pid, dmg] of m.dmgBy) {
     const p = players.get(pid);
     if (!p || p.dead || dist(p, m) > 25) continue;
-    const share = pid === killer.id ? 1 : Math.min(0.6, dmg / Math.max(1, total));
+    const pt = partyOf(p);
+    if (pt) {
+      const near = [...pt.members].map((id) => players.get(id)).filter((q) => q && !q.dead && dist(q, m) <= 25);
+      for (const q of near) if (!credit.has(q.id)) credit.set(q.id, (1 + 0.1 * (near.length - 1)) / near.length);
+    } else {
+      credit.set(pid, pid === killer.id ? 1 : Math.min(0.6, dmg / Math.max(1, total)));
+    }
+  }
+  for (const [pid, share] of credit) {
+    const p = players.get(pid);
     const factor = Math.min(1.5, Math.max(0.2, 1 + (m.lvl - p.lvl) * 0.1));
     giveXp(p, def.xp * factor * (m.lvl / def.lvl) * share);
     const q = p.quest;
@@ -586,19 +667,34 @@ function onMessage(ws, raw) {
       if (!text || now - p.chatAt < 600) return;
       p.chatAt = now;
       if (text === '/who') return log(p, `Online: ${[...players.values()].map((x) => `${x.name} (L${x.lvl})`).join(', ')}`, '#9fd0ff');
+      if (m.ch === 'party') {
+        const pt = partyOf(p);
+        if (!pt) return log(p, 'You are not in a party.', '#ff8a8a');
+        for (const id of pt.members) { const o = players.get(id); if (o) send(o, { t: 'chat', n: p.name, m: text, id: p.id, ch: 'party' }); }
+        break;
+      }
       for (const o of players.values()) send(o, { t: 'chat', n: p.name, m: text, id: p.id });
+      break;
+    }
+    case 'pinvite': partyInvite(p, m.name, now); break;
+    case 'pgo': partyAnswer(p, !!m.ok, now); break;
+    case 'pleave': leaveParty(p); break;
+    case 'pkick': {
+      const pt = partyOf(p), t = players.get(m.id | 0);
+      if (!pt || pt.leader !== p.id || !t || t === p || t.party !== pt.id) return;
+      leaveParty(t, 'was removed from the party');
       break;
     }
     case 'talk': talk(p, m.id | 0); break;
     case 'questAccept': {
-      const n = npcs[0];
+      const n = npcByRole('quest');
       if (dist(p, n) > 4.5 || p.quest.i >= QUESTS.length || p.quest.s !== 0) return;
       p.quest.s = 1; p.quest.p = 0; p.dirty = true;
       log(p, `Quest accepted: ${QUESTS[p.quest.i].title}`, '#ffe066');
       break;
     }
     case 'questTurnIn': {
-      const n = npcs[0], q = p.quest;
+      const n = npcByRole('quest'), q = p.quest;
       if (dist(p, n) > 4.5 || q.i >= QUESTS.length || q.s !== 2) return;
       const Q = QUESTS[q.i];
       if (Q.reward && !p.inv.includes(null)) return log(p, 'Make room in your pack first.', '#ff8a8a');
@@ -610,7 +706,7 @@ function onMessage(ws, raw) {
       break;
     }
     case 'buy': {
-      const n = npcs[1], it = SHOP[m.i | 0];
+      const n = npcByRole('shop'), it = SHOP[m.i | 0];
       if (!it || dist(p, n) > 4.5) return;
       if (p.gold < it.price) return log(p, 'Not enough gold.', '#ff8a8a');
       const { price, ...base } = it;
@@ -620,7 +716,7 @@ function onMessage(ws, raw) {
       break;
     }
     case 'sell': {
-      const n = npcs[1], it = p.inv[m.slot | 0];
+      const n = npcByRole('shop'), it = p.inv[m.slot | 0];
       if (!it || dist(p, n) > 4.5) return;
       const gold = Math.max(1, Math.floor(it.v * 0.5)) * (it.c || 1);
       p.gold += gold; p.inv[m.slot | 0] = null; p.dirty = true;
@@ -723,6 +819,7 @@ function tick() {
   for (const m of mobs.values()) mobAI(m, now);
   for (const d of drops.values()) if (now > d.exp) drops.delete(d.id);
   if (tickN % 2 === 0) broadcast(now);
+  if (tickN % 10 === 0) partyTick();
 }
 
 // ---------------------------------------------------------------- http + ws
@@ -732,7 +829,7 @@ const server = http.createServer((req, res) => {
   if (url === '/') url = '/client/index.html';
   if (url === '/api/status') {
     res.writeHead(200, { 'content-type': 'application/json' });
-    return res.end(JSON.stringify({ name: 'eldermoor', online: players.size, mobs: liveMobs().length, uptime: Math.round(process.uptime()) }));
+    return res.end(JSON.stringify({ name: 'eldermoor', online: players.size, parties: parties.size, mobs: liveMobs().length, uptime: Math.round(process.uptime()) }));
   }
   if (!url.startsWith('/client/') && !url.startsWith('/shared/')) { res.writeHead(404); return res.end('not found'); }
   const file = path.join(ROOT, url);

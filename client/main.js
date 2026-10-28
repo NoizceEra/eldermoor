@@ -38,6 +38,10 @@ const keys = new Set();
 let camX = 0, camY = 0;
 let selClass = 'warrior', selSlot = -1, shopOpen = false, dialogNpc = 0;
 const chatLines = [];
+let party = { id: 0, leader: 0, members: [] };
+const pmData = new Map(); // member id -> { h, mh, x, y } from the server's party tick
+let pendingInvite = null; // { from, name, until } or { offer: playerId, name }
+const inParty = (id) => party.members.some((m) => m.id === id);
 const skinOf = (id) => id % 4;
 const now = () => performance.now();
 
@@ -109,8 +113,15 @@ function onMsg(m) {
     case 's': applyState(m); break;
     case 'me': me = m; onMe(); break;
     case 'log': addLine(`<span style="color:${m.c}">${esc(m.m)}</span>`); break;
+    case 'party': party = m; pmData.clear(); renderParty(); break;
+    case 'pm': for (const r of m.m) pmData.set(r.id, r); renderParty(); break;
+    case 'pinv':
+      pendingInvite = { from: m.from, name: m.name, until: now() + 30000 };
+      showInvite(); sfx.click();
+      break;
     case 'chat': {
-      addLine(`<span style="color:${m.id === myId ? '#8be88b' : '#9fd0ff'}">${esc(m.n)}</span>: ${esc(m.m)}`);
+      if (m.ch === 'party') addLine(`<span style="color:#6ab8ff">[Party] ${esc(m.n)}</span>: ${esc(m.m)}`);
+      else addLine(`<span style="color:${m.id === myId ? '#8be88b' : '#9fd0ff'}">${esc(m.n)}</span>: ${esc(m.m)}`);
       const e = ents.get(m.id); if (e) { e.say = m.m; e.sayAt = now(); }
       break;
     }
@@ -305,6 +316,7 @@ function pickAt(px, py) {
   for (const e of ents.values()) {
     if (e.i === myId || e.dying) continue;
     if (e.k === 'm') consider(e, 'm');
+    else if (e.k === 'p' && !e.d) consider(e, 'p');
     else if (e.k === 'd') { if (e.x === tx0 && e.y === ty0) { bd = 0; best = { kind: 'd', e }; } }
   }
   for (const n of npcs) { const d = Math.hypot(n.x - (px - 8) / TS, n.y - (py - 8) / TS); if (d < bd) { bd = d; best = { kind: 'n', e: n }; } }
@@ -322,6 +334,8 @@ screen.addEventListener('mousedown', (ev) => {
     const rng = Math.max(1.4, (me ? me.st.range : 1.5) - 0.2);
     goal = { type: 'ent', id: hit.e.i, range: rng, then: 'chase' };
     sfx.click();
+  } else if (hit.kind === 'p') {
+    if (!inParty(hit.e.i) && (!party.id || party.leader === myId)) { pendingInvite = { offer: hit.e.i, name: hit.e.n }; showInvite(); }
   } else if (hit.kind === 'n') {
     goal = { type: 'ent', id: hit.e.id, range: 2.3, then: 'talk' };
   } else if (hit.kind === 'd') {
@@ -338,7 +352,7 @@ const toastMove = (x, y) => { clickMark = { x, y, t0: now() }; };
 addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
   if (document.activeElement === $('chatIn')) {
-    if (k === 'enter') { const v = $('chatIn').value.trim(); if (v) tx({ t: 'chat', m: v }); $('chatIn').value = ''; $('chatIn').blur(); }
+    if (k === 'enter') { const v = $('chatIn').value.trim(); if (v) sendChat(v); $('chatIn').value = ''; $('chatIn').blur(); }
     else if (k === 'escape') { $('chatIn').blur(); }
     e.stopPropagation();
     return;
@@ -355,10 +369,56 @@ addEventListener('keydown', (e) => {
   else if (k === 'e') interact();
   else if (k === 'm') { muted = !muted; localStorage.setItem('em_mute', muted ? '1' : '0'); toast(muted ? 'Sound off' : 'Sound on'); }
   else if (k === 'tab' || k === ' ') cycleTarget();
-  else if (k === 'escape') { closeDialog(); $('inv').classList.add('hidden'); tx({ t: 'target', id: 0 }); goal = null; }
+  else if ((k === 'y' || k === 'n') && pendingInvite) answerInvite(k === 'y');
+  else if (k === 'escape') { if (pendingInvite && pendingInvite.offer) { pendingInvite = null; showInvite(); } closeDialog(); $('inv').classList.add('hidden'); tx({ t: 'target', id: 0 }); goal = null; }
 });
 addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
 addEventListener('blur', () => keys.clear());
+
+// ---- party
+function sendChat(v) {
+  const arg = (cmd) => v.slice(cmd.length).trim();
+  if (v.startsWith('/invite ')) tx({ t: 'pinvite', name: arg('/invite') });
+  else if (v === '/leave') tx({ t: 'pleave' });
+  else if (v.startsWith('/kick ')) {
+    const t = party.members.find((m) => m.name.toLowerCase() === arg('/kick').toLowerCase());
+    if (t) tx({ t: 'pkick', id: t.id }); else addLine('<span style="color:#ff8a8a">Nobody in your party has that name.</span>');
+  } else if (v.startsWith('/p ')) tx({ t: 'chat', m: arg('/p'), ch: 'party' });
+  else if (v === '/help') addLine('<span style="color:#9fd0ff">/invite NAME, /leave, /kick NAME, /p TEXT (party chat), /who</span>');
+  else tx({ t: 'chat', m: v });
+}
+function answerInvite(ok) {
+  const inv = pendingInvite;
+  pendingInvite = null; showInvite();
+  if (!inv) return;
+  if (inv.offer) { if (ok) tx({ t: 'pinvite', name: inv.name }); } else tx({ t: 'pgo', ok });
+}
+function showInvite() {
+  const box = $('invite');
+  if (!pendingInvite) { box.classList.add('hidden'); return; }
+  const o = pendingInvite.offer;
+  box.innerHTML = `<div>${o ? `Invite <b style="color:#6ab8ff">${esc(pendingInvite.name)}</b> to your party?` : `<b style="color:#6ab8ff">${esc(pendingInvite.name)}</b> invites you to a party`}</div>
+    <div class="btns"><button data-a="1">${o ? 'Invite (Y)' : 'Accept (Y)'}</button><button data-a="0">${o ? 'Cancel (N)' : 'Decline (N)'}</button></div>`;
+  box.classList.remove('hidden');
+  box.querySelectorAll('button').forEach((b) => { b.onclick = () => answerInvite(b.dataset.a === '1'); });
+}
+function renderParty() {
+  const el = $('party');
+  el.innerHTML = '';
+  el.classList.toggle('hidden', !party.id);
+  const amLeader = party.leader === myId;
+  for (const mem of party.members) {
+    if (mem.id === myId) continue;
+    const d = pmData.get(mem.id) || { h: 1, mh: 1 };
+    const row = document.createElement('div'); row.className = 'pm';
+    row.innerHTML = `<div class="row"><b class="${mem.id === party.leader ? 'lead' : ''}">${esc(mem.name)}</b><span>Lv ${mem.lvl}</span></div><div class="bar hp"><i style="width:${Math.max(0, Math.min(100, (d.h / d.mh) * 100))}%"></i></div>`;
+    if (amLeader) { const x = document.createElement('button'); x.className = 'x'; x.textContent = 'kick'; x.title = 'Remove from party'; x.onclick = () => tx({ t: 'pkick', id: mem.id }); row.querySelector('.row').appendChild(x); }
+    el.appendChild(row);
+  }
+  if (party.id) {
+    const lv = document.createElement('button'); lv.textContent = 'Leave party'; lv.style.fontSize = '7px'; lv.onclick = () => tx({ t: 'pleave' }); el.appendChild(lv);
+  }
+}
 
 function cycleTarget() {
   const m = meEnt(); if (!m) return;
@@ -617,7 +677,7 @@ function drawEntity(o, t, tgId) {
   if (o.k === 'm' && (o.h < o.mh || o.i === tgId)) drawHealthBar(Math.round(cx - barW / 2), py - 2 - (o.s === 'golem' ? 0 : 0), barW, o.h / o.mh);
   if (o.k === 'p' && o.i !== myId) drawHealthBar(Math.round(cx - 6), py - 1, 12, o.h / o.mh, '#4ac86a');
   const name = o.k === 'p' ? o.n : mobDef(o).name;
-  const col = o.k === 'p' ? (o.i === myId ? '#8be88b' : '#ffffff') : levelColor(o.l);
+  const col = o.k === 'p' ? (o.i === myId ? '#8be88b' : inParty(o.i) ? '#6ab8ff' : '#ffffff') : levelColor(o.l);
   labels.push({ x: cx, y: py - (o.k === 'm' && (o.h < o.mh || o.i === tgId) ? 5 : 2), txt: o.k === 'p' ? name : `${name}  ${o.l}`, col, boss: !!mobDef(o).boss });
   if (o.say && t - o.sayAt < 5000) labels.push({ x: cx, y: py - 14, txt: o.say, col: '#ffffff', bubble: true });
 }
@@ -839,6 +899,11 @@ function drawMinimap(t) {
     else if (o.k === 'p' && o.i !== myId) { x.fillStyle = '#6ae0ff'; x.fillRect(px - 1, py - 1, 2, 2); }
   }
   for (const n of npcs) { x.fillStyle = '#ffe066'; x.fillRect(n.x - ox - 1, n.y - oy - 1, 2, 2); }
+  for (const [id, d] of pmData) { // party members stay on the map even when out of view
+    if (id === myId) continue;
+    const px = d.x - ox, py = d.y - oy; if (px < 0 || py < 0 || px >= 64 || py >= 64) continue;
+    x.fillStyle = '#6aff8a'; x.fillRect(px - 1, py - 1, 3, 3); x.fillStyle = '#0d0a18'; x.fillRect(px, py, 1, 1);
+  }
   if (Math.floor(t / 400) % 2) { x.fillStyle = '#fff'; x.fillRect(m.x - ox - 1, m.y - oy - 1, 3, 3); } else { x.fillStyle = '#8be88b'; x.fillRect(m.x - ox - 1, m.y - oy - 1, 3, 3); }
 }
 
@@ -849,6 +914,7 @@ function tickFrame() {
   stepEntities(dt, t);
   if (inGame) {
     runKeys(t); runGoal(t);
+    if (pendingInvite && !pendingInvite.offer && t > pendingInvite.until) { pendingInvite = null; showInvite(); }
     if (me) {
       updateCooldowns(t);
       const tg = me.tg && ents.get(me.tg);
