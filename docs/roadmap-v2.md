@@ -10,8 +10,9 @@ Delivered in phases, each committed with tests. Nothing here is a promise of a s
 |---|---|---|
 | 1 | Progression core: main level + job levels, 5 attributes, 6 jobs x 6 skills, skill library that carries over, 3-6 slot skill bar, status effects, threat, weapon-based auto attacks, telegraphed boss attacks, character window UI | **done** (tests: `smoke-jobs.mjs`) |
 | 2 | Customization + wearables: appearance creator (skin/hair/eyes), 11 equipment slots incl. head/body/legs/boots/gloves/cape/2 rings/amulet, equipment drawn on the character, item affixes | **done** (tests: `smoke-gear.mjs`) |
-| 3 | Bigger world: 256x256 world of 4 islands, chunked rendering, 6 biomes, 3 more towns, 23 more monsters (3 bosses), 15 more quests, per-town shops, world map | **done** incl. the second dungeon, The Frozen Depths (tests: `smoke-world.mjs`, `smoke-frozen.mjs`) |
+| 3 | Bigger world: 256x256 world of 4 islands, chunked rendering, 6 biomes, 3 more towns, 23 more monsters (3 bosses), 15 more quests, per-town shops, world map | **done** incl. the second and third dungeons, The Frozen Depths and The Ember Forge (fire theme, 11 rooms, Vorthak; 29 quests, 34 monsters) (tests: `smoke-world.mjs`, `smoke-frozen.mjs`, `smoke-ember.mjs`) |
 | 4 | UX + scale: world map, quest log, settings/help menu, buff bars, delta-encoded state, spatial grid + sleeping monsters, party loot protection, deploy config | **done** (tests: `smoke-scale.mjs`). Not done: persistent saves on the free host, Colyseus |
+| 5 | Content pass: 10 jobs, 3 dungeons (Sunken Crypt, Frozen Depths, Ember Forge), 29 quests with job-flavoured givers in all four towns, item comparison deltas in pack and shop | **done** |
 | - | Shareable URL | needs the owner's go-ahead (see "Hosting" below) |
 
 ## Phase 1 design (multiclassing)
@@ -24,7 +25,7 @@ active. Job level gives that job's automatic attribute growth and unlocks that j
 bar slot while *any* job is active, so a Warrior can carry Mage's Frost Nova. The job only decides passive trait,
 auto growth, and who levels.
 
-**Jobs:** Warrior, Mage, Ranger, Cleric, Rogue, Warlock, plus (later) Paladin, Druid, Necromancer, Monk. Six skills each, learned at job levels 1/3/6/9/13/17.
+**Jobs:** Warrior, Mage, Ranger, Cleric, Rogue, Warlock, Paladin, Druid, Necromancer, Monk (all 10 exist). Six skills each, learned at job levels 1/3/6/9/13/17.
 
 **Attributes:** STR (melee power), DEX (bow/dagger power, crit, dodge, haste), INT (magic power), VIT (health), SPR
 (healing power, magic resistance). Weapon type decides which attribute your auto attack scales with, so a Cleric with a

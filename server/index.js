@@ -9,7 +9,7 @@ import { WebSocketServer } from 'ws';
 import { W, G, TOWN, TOWNS, BOSS, BOSSES, CAMP, CAMPS, ISLANDS, inTown, generateWorld, generateDungeon, isSolid } from '../shared/world.js';
 import {
   SEED, TICK_MS, INV_SIZE, MOBS, QUESTS, RARITY, NPCS,
-  DUNGEONS, PORTAL, PORTAL2, EXIT_ID,
+  DUNGEONS, PORTAL, PORTAL2, PORTAL3, EXIT_ID,
 } from '../shared/data.js';
 import {
   MAIN_MAX, JOB_MAX, POINTS_PER_LEVEL, JOB_SWITCH_MS, ATTRS, ATTR_BASE, WEAPON_TYPES, JOB_ORDER, JOBS, SKILLS, EFFECTS,
@@ -43,7 +43,7 @@ function makeZone(id, kind, w) {
   return { id, kind, world: w, mobs: new Map(), drops: new Map(), occ: new Map(), grid: new Map(), npcs: [], emptyAt: 0 };
 }
 const overworld = makeZone('world', 'world', world);
-overworld.npcs = [...NPCS, PORTAL, PORTAL2].map((n) => ({ ...n, k: 'n' }));
+overworld.npcs = [...NPCS, PORTAL, PORTAL2, PORTAL3].map((n) => ({ ...n, k: 'n' }));
 for (const n of overworld.npcs) overworld.occ.set(key(n.x, n.y), n);
 const zones = new Map([[overworld.id, overworld]]);
 const instances = new Map(); // party/solo key -> dungeon zone

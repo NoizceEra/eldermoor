@@ -2,7 +2,7 @@
 import { W, H, G, O, TOWN, TOWNS, BOSSES, generateWorld, generateDungeon, isSolid, inTown, regionAt } from '/shared/world.js';
 import { SEED, MOBS, QUESTS, RARITY, NPCS } from '/shared/data.js';
 import { JOBS, JOB_ORDER, SKILLS, ATTRS, ATTR_INFO, EFFECTS, skillsOfJob } from '/shared/jobs.js';
-import { EQ_KEYS, EQ_LABEL, LOOK_LIMITS, LOOK_LABELS, LOOK_COST, SKIN_TONES, HAIR_STYLES, HAIR_COLORS, EYE_COLORS, STARTER_KIT, defaultLook, visTokens } from '/shared/gear.js';
+import { EQ_KEYS, EQ_LABEL, LOOK_LIMITS, LOOK_LABELS, LOOK_COST, SKIN_TONES, HAIR_STYLES, HAIR_COLORS, EYE_COLORS, STARTER_KIT, defaultLook, visTokens, eqKeyFor } from '/shared/gear.js';
 import * as SP from '/client/sprites.js';
 import * as HERO from '/client/hero32.js';
 import { TS, CHUNK, buildWorldArt, drawWaterTile, drawLavaTile, treeSprite } from '/client/gfx.js';
@@ -13,8 +13,8 @@ const artOver = buildWorldArt(worldOver);
 let world = worldOver, art = artOver; // swapped when the server moves us into a dungeon instance
 let zoneKind = 'world', zoneId = 'world', zoneTheme = 'world', zoneName = 'Eldermoor';
 const dungeonCache = new Map(); // seed -> { world, art }
-const BIG = new Set(['golem', 'bonelord', 'sandgolem', 'icegolem', 'obsidiangolem', 'sunking', 'rimefang', 'cinderwing']);
-const HUMANOID = new Set(['goblin', 'skeleton', 'ghoul', 'wraith', 'mummy', 'frostsprite', 'yeti', 'emberknight']);
+const BIG = new Set(['golem', 'bonelord', 'sandgolem', 'icegolem', 'obsidiangolem', 'sunking', 'rimefang', 'cinderwing', 'moltengolem', 'emberlord']);
+const HUMANOID = new Set(['goblin', 'skeleton', 'ghoul', 'wraith', 'mummy', 'frostsprite', 'yeti', 'emberknight', 'emberacolyte']);
 const FLYERS = new Set(['bat', 'frostowl', 'imp']);
 const SLIMES = new Set(['slime', 'frostslime', 'magmaslime']);
 
@@ -116,6 +116,45 @@ const statParts = (it) => {
   if (it.dodge) out.push(`+${it.dodge}% dodge`);
   if (it.heal) out.push(`heals ${it.heal}`);
   return out;
+};
+// ---- item comparison: stat deltas against what is worn in the slot the item would take
+const statMap = (it) => {
+  const o = {};
+  if (!it) return o;
+  if (it.atk) o.ATK = it.atk;
+  if (it.def) o.DEF = it.def;
+  if (it.hp) o.HP = it.hp;
+  for (const [k, v] of Object.entries(it.a || {})) o[k.toUpperCase()] = (o[k.toUpperCase()] || 0) + v;
+  if (it.crit) o['% crit'] = it.crit;
+  if (it.dodge) o['% dodge'] = it.dodge;
+  return o;
+};
+/** the equipped item this one would replace (rings: a free ring slot first, else ring 1, as the server does); null = nothing worn */
+const worn = (it) => (me && it && it.s !== 'potion' && eqKeyFor(me.eq, it) ? me.eq[eqKeyFor(me.eq, it)] : null);
+const wearsSlot = (it) => !!(me && it && eqKeyFor(me.eq, it));
+/** [{ label, d }] for every stat that changes, biggest gain first; empty when nothing changes */
+function statDeltas(it, cur) {
+  const a = statMap(it), b = statMap(cur), out = [];
+  for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) {
+    const d = (a[k] || 0) - (b[k] || 0);
+    if (d) out.push({ label: k, d });
+  }
+  return out.sort((x, y) => y.d - x.d);
+}
+const fmtDelta = ({ label, d }) => {
+  const txt = `${d > 0 ? '+' : '-'}${Math.abs(d)}${label.startsWith('%') ? '' : ' '}${label}`;
+  return `<span class="${d > 0 ? 'dUp' : 'dDown'}">${txt}</span>`;
+};
+const deltaFor = (it, cur, tag = '') => {
+  const ds = statDeltas(it, cur);
+  return `<span class="small">${cur ? `vs ${esc(cur.n)}${tag}` : 'vs empty slot'}</span> ` + (ds.length ? ds.map(fmtDelta).join(' ') : '<span class="small">no change</span>');
+};
+const deltaLine = (it, full = false) => {
+  if (!wearsSlot(it)) return '';
+  const cur = worn(it);
+  // both ring slots taken: equipping replaces ring 1, but show ring 2 too so the player can pick which to swap out
+  if (full && it.s === 'ring' && me.eq.ring1 && me.eq.ring2) return `${deltaFor(it, me.eq.ring1, ' (ring 1, replaced)')}<br>${deltaFor(it, me.eq.ring2, ' (ring 2)')}`;
+  return deltaFor(it, cur);
 };
 const skillURL = (id) => { const k = `sk${id}`; if (!urlCache.has(k)) urlCache.set(k, SP.skillIcon(id).toDataURL()); return urlCache.get(k); };
 
@@ -912,13 +951,14 @@ function tryOnPanel(it) {
   draw();
   return box;
 }
-function itemTip(it) {
+function itemTip(it, cmp = false) {
   const r = RARITY[it.r];
   const lines = [`<span style="color:${r.c}">${esc(it.n)}</span> <span class="small">${r.n}</span>`];
   if (it.s === 'potion') lines.push(`Heals ${it.heal} health`, `Stack: ${it.c}`);
   else {
     lines.push(`<span class="small">${it.s} · req. level ${Math.max(1, it.l - 2)}</span>`);
     for (const sp of statParts(it)) lines.push(`<span style="color:#9fd0ff">${sp}</span>`);
+    if (cmp) { const dl = deltaLine(it, true); if (dl) lines.push(dl); }
   }
   lines.push(`<span style="color:#ffd23a">Worth ${Math.max(1, Math.floor(it.v * 0.5))}g</span>`);
   return lines.join('<br>');
@@ -964,7 +1004,7 @@ function primary(i) {
 function showInfo(it, act, label, slot) {
   const box = $('itemInfo');
   if (!it) { box.innerHTML = '<span class="small">Empty slot.</span>'; return; }
-  box.innerHTML = `${itemTip(it)}<div class="btns"></div>`;
+  box.innerHTML = `${itemTip(it, slot !== null)}<div class="btns"></div>`;
   if (it.s !== 'potion' && TRY_SLOT[it.s] !== undefined) box.insertBefore(tryOnPanel(it), box.querySelector('.btns'));
   const b = box.querySelector('.btns');
   const mk = (txt, fn) => { const x = document.createElement('button'); x.textContent = txt; x.onclick = fn; b.appendChild(x); };
@@ -1001,7 +1041,7 @@ function openDialog(m) {
       const row = document.createElement('div'); row.className = 'shopRow';
       row.onmouseenter = row.onclick = () => showTry(it);
       const stats = statParts(it).join(' ');
-      row.innerHTML = `<img src="${iconURL(it.b, it.r, it.cl)}"><div class="grow"><span style="color:${RARITY[it.r].c}">${esc(it.n)}</span><br><span class="small">${stats}</span></div><span style="color:#ffd23a">${it.price}g</span>`;
+      row.innerHTML = `<img src="${iconURL(it.b, it.r, it.cl)}"><div class="grow"><span style="color:${RARITY[it.r].c}">${esc(it.n)}</span><br><span class="small">${stats}</span>${wearsSlot(it) ? `<br>${deltaLine(it)}` : ''}</div><span style="color:#ffd23a">${it.price}g</span>`;
       const b = document.createElement('button'); b.textContent = 'Buy'; b.onclick = () => tx({ t: 'buy', i }); row.appendChild(b);
       box.appendChild(row);
     });
@@ -1296,7 +1336,7 @@ function drawDrop(d, t) {
 
 function drawPortal(n, t) {
   const cx = Math.round(n.x * TS + 8 - camX), cy = Math.round(n.y * TS + 8 - camY);
-  const exit = n.name === 'Exit', ice = /Frozen/.test(n.name), c1 = exit ? '#8aff9a' : ice ? '#8affff' : '#c06bff', c2 = exit ? '#3a8a5a' : ice ? '#3a8ac8' : '#7a3fc0';
+  const exit = n.name === 'Exit', ice = /Frozen/.test(n.name), fire = /Ember/.test(n.name), c1 = exit ? '#8aff9a' : ice ? '#8affff' : fire ? '#ffb040' : '#c06bff', c2 = exit ? '#3a8a5a' : ice ? '#3a8ac8' : fire ? '#c8381a' : '#7a3fc0';
   shadow(cx, cy + 7, 12);
   for (let dy = -10; dy <= 10; dy++) {
     const hw = Math.round(7 * Math.sqrt(1 - (dy / 10.5) ** 2));
@@ -1373,7 +1413,7 @@ function render(t, dt) {
 
   // lighting (day/night)
   const phase = (((Date.now() + timeOff) % DAY_MS) + DAY_MS) % DAY_MS / DAY_MS;
-  const amb = zoneKind === 'dungeon' ? (zoneTheme === 'ice' ? [120, 150, 200] : [92, 94, 135]) : ambient(phase);
+  const amb = zoneKind === 'dungeon' ? (zoneTheme === 'ice' ? [120, 150, 200] : zoneTheme === 'fire' ? [170, 110, 90] : [92, 94, 135]) : ambient(phase);
   const dark = 1 - (amb[0] + amb[1] + amb[2]) / 765;
   if (dark > 0.02) {
     lx.globalCompositeOperation = 'source-over';

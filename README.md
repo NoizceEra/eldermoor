@@ -40,9 +40,9 @@ Open the URL in several tabs to play together. Heroes persist in `data/saves.jso
 ## What's in it
 
 - **A 256x256 world of four islands joined by plank bridges**, generated from a seed shared by client and server: Eldermoor (meadow, forest, swamp), **Sunscar Dunes** (desert, oasis, cacti), **Frostmarch** (snow, ice, pines) and **Cinderpeak** (basalt, ash, animated lava). Each has a walled town (Dunehaven, Frostwatch, Emberhold), its own shop, a quest giver, a boss arena and a monster camp. Terrain is baked in 32x32-tile chunks on demand, so the big map costs almost no memory.
-- **29 monster types** from level 2 to 54, many with status attacks (poison, bleed, burn, slow) and telegraphed slams. Three region bosses: **The Sun King**, **Rimefang** and **Cinderwing**, plus the Moss Golem and the Bone Lord. Respawns, XP and loot (4 rarities, stat gear, four tiers of health potions). If you die you return to the nearest town.
-- **20 quests** across the four towns: finish one and the next giver may be across a bridge. Shops get better the further you travel.
-- **Two instanced dungeons**, each private to your party (or you) and gone a minute after everyone leaves; dying sends you back to town. **The Sunken Crypt** (purple portal, south-west ruins of Eldermoor, level 14+): 8 rooms, ghouls, wraiths, bone archers and **The Bone Lord**. **The Frozen Depths** (ice-blue portal, ruin on the Frostmarch shore, level 34+): 10 winding ice rooms, yetis, ice golems, frost sprites and **Glacius, the Frozen King**. Bosses drop guaranteed rare+ gear.
+- **34 monster types** from level 2 to 54, many with status attacks (poison, bleed, burn, slow) and telegraphed slams. Three region bosses: **The Sun King**, **Rimefang** and **Cinderwing**, plus the Moss Golem and the Bone Lord. Respawns, XP and loot (4 rarities, stat gear, four tiers of health potions). If you die you return to the nearest town.
+- **29 quests** across the four towns (the last nine, set in the Ember Forge, are given by Paladin, Necromancer, Monk and Druid NPCs): finish one and the next giver may be across a bridge. Shops get better the further you travel.
+- **Three instanced dungeons**, each private to your party (or you) and gone a minute after everyone leaves; dying sends you back to town. **The Sunken Crypt** (purple portal, south-west ruins of Eldermoor, level 14+): 8 rooms, ghouls, wraiths, bone archers and **The Bone Lord**. **The Frozen Depths** (ice-blue portal, ruin on the Frostmarch shore, level 34+): 10 winding ice rooms, yetis, ice golems, frost sprites and **Glacius, the Frozen King**. **The Ember Forge** (orange portal, crater ruin on Cinderpeak, level 48+): 11 serpentine fire rooms of slag crawlers, ember acolytes, magma serpents and molten colossi, ending with **Vorthak, the Ember Lord**. Bosses drop guaranteed rare+ gear.
 - **Multiclassing**: 10 jobs (Warrior, Mage, Ranger, Cleric, Rogue, Warlock, Paladin, Druid, Necromancer, Monk), each with its own level (1-20) on top of your main level (1-60). 60 skills (now with charges, multi-hit combos, roots and party regeneration); every skill you learn stays with you and works in any bar slot under any job, so a Warrior can carry Frost Nova. Switch jobs any time you are out of combat (15s cooldown). Job levels keep their progress when you switch away.
 - **Attributes** (STR / DEX / INT / VIT / SPR): 3 points per level, plus automatic growth from your active job. Your weapon decides which attribute your auto attacks use.
 - **Combat v2**: crits, dodge, physical vs magic defense, status effects (stun, slow, burn, poison, bleed, vulnerable, haste, shields, regen, fear...), threat tables so tanks can hold monsters, global cooldown, telegraphed boss attacks (watch for the red circles).
@@ -66,7 +66,7 @@ scripts/smoke*.mjs headless end-to-end tests (solo, party, dungeon, trade). The 
 
 ## Ideas next
 
-A second dungeon, a bank, crafting, more zones/dungeons, player-vs-player arenas, mounts, crafting, bank, touch controls.
+A bank, crafting, more zones/dungeons, player-vs-player arenas, mounts, crafting, bank, touch controls.
 
 ## Deploy (shareable link)
 

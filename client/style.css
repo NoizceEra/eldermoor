@@ -228,3 +228,5 @@ body.touch #region { top: 120px; font-size: 11px; }
 .qrow.done { border-color: #5fd35f; opacity: .6; } .qrow.cur { border-color: var(--gold); } .qrow.lock { opacity: .4; }
 .qrow .ds { color: var(--dim); font-size: 7px; }
 body.touch #menu, body.touch #qlog { top: 8px; width: 96vw; max-height: 92vh; }
+
+.dUp { color: #6aff8a; } .dDown { color: #ff7a7a; }

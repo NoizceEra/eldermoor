@@ -169,6 +169,38 @@ QUESTS.push(
   Q('Cinderwing', 'cinderwing', 1, 17, 'Cinderwing roosts in the crater. Slay the dragon and the realm is safe.', { reward: 'epic', rewardLvl: 54 }),
 );
 
+// ---- The Ember Forge (Cinderpeak dungeon, level ~48): four monsters only found below, and the Ember Lord
+Object.assign(MOBS, {
+  slagcrawler: mob('Slag Crawler', 46, { hp: 0.9, mv: 330, at: 1100, extra: { onhit: [['burn', 4000, 0.18]] } }),
+  emberacolyte: mob('Ember Acolyte', 47, { range: 5, hp: 0.8, mv: 430, at: 1500, extra: { mag: true, onhit: [['burn', 5000, 0.2]] } }),
+  magmaserpent: mob('Magma Serpent', 49, { hp: 1.1, mv: 300, at: 1100, extra: { onhit: [['burn', 6000, 0.22]] } }),
+  moltengolem: mob('Molten Colossus', 51, { hp: 2.7, mv: 720, at: 2000, range: 2.2, extra: { specials: [SLAM(1100, 2.5, 2.2)] } }),
+  emberlord: mob('Vorthak, the Ember Lord', 52, {
+    hp: 17, dmg: 1.5, mv: 650, at: 1800, range: 5.5, aggro: 12, leash: 22, xp: 5, respawn: 1e9,
+    extra: { boss: true, mag: true, specials: [{ kind: 'summon', type: 'slagcrawler', n: 3, cd: 15000, max: 8, range: 14 }, SLAM(1100, 3.0, 2.3), { kind: 'drain', r: 5, cd: 10000, mult: 1.3 }] },
+  }),
+});
+// ---- newer-job quest givers (ids 19-22), one per town; the Ember Forge chain tours all four
+const [, DH2, FW2, EH2] = TOWNS;
+NPCS.push(
+  { id: 19, key: 'templar', name: 'Sister Ilsa', role: 'quest', x: EH2.cx + 3, y: EH2.cy + 2 },
+  { id: 20, key: 'gravetender', name: 'Gravetender Vael', role: 'quest', x: DH2.cx - 3, y: DH2.cy + 2 },
+  { id: 21, key: 'abbot', name: 'Brother Tamsin', role: 'quest', x: TOWN.cx - 3, y: TOWN.cy + 2 },
+  { id: 22, key: 'hermit', name: 'Hermit Oake', role: 'quest', x: FW2.cx - 3, y: FW2.cy + 2 },
+);
+// The Ember Forge chain (appended, so saved quest progress keeps its meaning). Kills inside the dungeon count.
+QUESTS.push(
+  Q('The Forge Below', 'slagcrawler', 10, 17, 'Beneath the crater to the south-east lies the Ember Forge, a furnace older than Emberhold. Slag Crawlers pour out of it. Step through the crater portal and cull ten.'),
+  Q('An Oath of Light', 'emberacolyte', 8, 19, 'I am a Paladin of the Dawn, and I swore to burn no one. The Ember Acolytes feed their altar with prisoners. Put out eight of them for me, and for the oath.'),
+  Q('Serpents of Slag', 'magmaserpent', 8, 17, 'Magma Serpents nest in the furnace pipes. Their venom burns for days. Bring me eight of their fangs.'),
+  Q('Hearts Still Burning', 'moltengolem', 6, 20, 'Walk north to Dunehaven and find me among the tombs. The Molten Colossi do not die so much as cool, and a Necromancer can use a heart that still burns. Six of them, and do not scorch the husks.'),
+  Q('Trial by Fire', 'emberacolyte', 12, 21, 'Come west to Eldermoor. A monk learns stillness in the middle of the storm. Go back down the Forge and meditate on twelve acolytes until they stop chanting.'),
+  Q('Voice of the Grove', 'slagcrawler', 14, 22, 'Travel south to Frostwatch. As a druid I hear the roots screaming under the ash: the crawlers are eating them. Fourteen fewer will give the land a chance to grow green.'),
+  Q('The Wounded Mountain', 'magmaserpent', 10, 22, 'The mountain bleeds from its pipes, and the serpents drink the wound. Ten more, and I will tend the scar.'),
+  Q('Colossi of the Forge', 'moltengolem', 8, 17, 'Back to Emberhold, hero. The Colossi guard the deepest hall of the Forge. Break eight and the way to the Ember Lord stands open.'),
+  Q('The Ember Lord', 'emberlord', 1, 17, 'Vorthak, the Ember Lord, keeps the furnace lit with stolen lives. End him at the bottom of the Ember Forge.', { reward: 'epic', rewardLvl: 52 }),
+);
+
 // ======================================================================= Dungeons (instanced, one per party or solo hero)
 Object.assign(MOBS, {
   glacius: mob('Glacius, the Frozen King', 44, {
@@ -178,6 +210,8 @@ Object.assign(MOBS, {
 });
 export const PORTAL2_ID = 7;
 export const PORTAL2 = { id: PORTAL2_ID, key: 'portal', name: 'The Frozen Depths', role: 'portal', x: CAMPS[2].x, y: CAMPS[2].y };
+export const PORTAL3_ID = 8;
+export const PORTAL3 = { id: PORTAL3_ID, key: 'portal', name: 'The Ember Forge', role: 'portal', x: CAMPS[3].x, y: CAMPS[3].y };
 export const DUNGEONS = [
   {
     id: 'crypt', name: 'The Sunken Crypt', theme: 'crypt', seed: DUNGEON_SEED, npcId: PORTAL_ID, portal: { x: CAMP.x, y: CAMP.y }, rec: DUNGEON_REC_LVL,
@@ -188,5 +222,10 @@ export const DUNGEONS = [
     id: 'frozen', name: 'The Frozen Depths', theme: 'ice', seed: 4242, npcId: PORTAL2_ID, portal: { x: CAMPS[2].x, y: CAMPS[2].y }, rec: 34,
     boss: 'glacius', bossAdds: ['frostsprite', 'icegolem'],
     mixes: [null, ['frostslime', 'snowwolf'], ['snowwolf', 'frostsprite'], ['frostsprite', 'yeti'], ['yeti', 'snowwolf'], ['yeti', 'frostsprite'], ['icegolem', 'frostsprite'], ['icegolem', 'yeti'], ['yeti', 'icegolem'], ['icegolem', 'frostsprite']],
+  },
+  {
+    id: 'ember', name: 'The Ember Forge', theme: 'fire', seed: 6611, npcId: PORTAL3_ID, portal: { x: CAMPS[3].x, y: CAMPS[3].y }, rec: 48,
+    boss: 'emberlord', bossAdds: ['emberacolyte', 'moltengolem'],
+    mixes: [null, ['slagcrawler', 'magmaserpent'], ['slagcrawler', 'emberacolyte'], ['magmaserpent', 'emberacolyte'], ['emberacolyte', 'moltengolem'], ['slagcrawler', 'moltengolem'], ['magmaserpent', 'moltengolem'], ['emberacolyte', 'magmaserpent'], ['moltengolem', 'emberacolyte'], ['moltengolem', 'slagcrawler']],
   },
 ];

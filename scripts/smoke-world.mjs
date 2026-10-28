@@ -36,7 +36,13 @@ ok(regionAt(64, 64).town && regionAt(70, 80).name === 'Greenmeadow' && regionAt(
 ok(inTown(192, 66) && inTown(62, 194) && inTown(194, 190), 'every town is a safe zone');
 const spawnTypes = ['scarab', 'scorpion', 'sandviper', 'mummy', 'sandgolem', 'frostslime', 'snowwolf', 'frostowl', 'frostsprite', 'yeti', 'icegolem', 'imp', 'magmaslime', 'lavahound', 'emberknight', 'fireelem', 'obsidiangolem'];
 ok(spawnTypes.every((t) => MOBS[t]) && BOSSES.every((b) => MOBS[b.mob] && MOBS[b.mob].boss), '17 new monsters and 3 new bosses are defined');
-ok(QUESTS.length === 20 && QUESTS.every((q) => MOBS[q.mob] && NPCS.some((n) => n.id === q.giver && n.role === 'quest')), '20 quests, each with a real giver and target');
+ok(QUESTS.length === 29 && QUESTS.every((q) => MOBS[q.mob] && NPCS.some((n) => n.id === q.giver && n.role === 'quest')), '29 quests, each with a real giver and target');
+const emberMobs = ['slagcrawler', 'emberacolyte', 'magmaserpent', 'moltengolem', 'emberlord'];
+ok(emberMobs.every((t) => MOBS[t]) && MOBS.emberlord.boss && MOBS.emberlord.specials.length === 3 && emberMobs.slice(0, 4).every((t) => !MOBS[t].boss), 'the Ember Forge monsters and its boss are defined');
+const lastQ = QUESTS.at(-1);
+ok(lastQ.mob === 'emberlord' && lastQ.reward === 'epic' && lastQ.rewardLvl >= 50 && lastQ.gold >= 1000, 'the final quest is the Ember Lord boss quest with an epic reward and a gold floor');
+ok(new Set(QUESTS.slice(20).map((q) => q.giver)).size >= 5, 'the Ember Forge quest line tours several towns');
+ok(NPCS.every((n) => !isSolid(world, n.x, n.y) && inTown(n.x, n.y)) && new Set(NPCS.map((n) => `${n.x},${n.y}`)).size === NPCS.length, 'every NPC (incl. the new quest givers) stands on open town ground, none stacked');
 for (const m of Object.values(MOBS)) if (!(m.hp > 0 && m.dmg[1] >= m.dmg[0] && m.xp > 0)) ok(false, `bad monster stats ${m.name}`);
 
 // ---------------------------------------------------------------- live server checks
@@ -81,7 +87,7 @@ ok2(st.mobs > 500, `the world is populated (${st.mobs} monsters)`);
 
 const A = await bot('WorldAlpha');
 A.tx({ t: 'dbg', god: true, lvl: 40 }); await wait(250);
-ok2([10, 11, 12, 13, 14, 15, 16, 17, 18].every((id) => A.zone.npcs.some((n) => n.id === id)), 'the zone message lists the NPCs of all four towns');
+ok2([8, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22].every((id) => A.zone.npcs.some((n) => n.id === id)), 'the zone message lists the NPCs of all four towns');
 
 // each island has its own monsters
 const seenOn = async (name, x, y, types) => {

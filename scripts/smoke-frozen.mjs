@@ -45,7 +45,7 @@ async function bot(name) {
 
 await wait(1500);
 if (!out.includes('listening')) fail('server did not start: ' + out);
-ok(DUNGEONS.length === 2 && frozen.rec > crypt.rec && MOBS[frozen.boss].boss, 'two dungeons are registered; the frozen one is higher level with a boss');
+ok(DUNGEONS.length >= 2 && frozen.rec > crypt.rec && MOBS[frozen.boss].boss, 'the frozen dungeon is registered, higher level than the crypt, with a boss');
 
 const A = await bot('FrostAlpha');
 ok(A.zone.npcs.some((n) => n.id === PORTAL2_ID && n.name === 'The Frozen Depths') && A.zone.npcs.some((n) => n.id === PORTAL_ID), 'the overworld has both dungeon portals');

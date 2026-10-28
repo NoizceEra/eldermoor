@@ -390,6 +390,11 @@ const NPC_LOOK = {
   mummy: { skin: '#d8d0b0', hair: '#d8d0b0', tunic: '#d8d0b0', sleeve: '#cfc8a8', pants: '#cfc8a8', boots: '#bdb690', belt: '#9a926a', hat: 'cap', hatCol: '#d8d0b0', eye: '#ff4a2a' },
   frostsprite: { skin: '#bfe8ff', hair: '#ffffff', tunic: '#6ab8ff', pants: '#4a98e0', boots: '#e8f8ff', belt: '#ffffff', robe: true, hat: 'none', eye: '#ffffff', weapon: 'wand', blade: '#8affff' },
   yeti: { skin: '#e8f0ff', hair: '#dfe8f5', tunic: '#dfe8f5', sleeve: '#dfe8f5', pants: '#c8d4e8', boots: '#aab8d0', belt: '#8a98b0', hat: 'none', eye: '#3aafff', ears: true },
+  templar: { skin: SKINS[1], hair: '#c8a060', tunic: '#e8e0b0', pants: '#8a94a8', boots: '#6a7a8a', belt: '#e8c04a', hat: 'helm', hatCol: '#e8e0b0', weapon: 'sword', blade: '#fff2a0', shield: true, shieldCol: '#e8d88a', trim: '#e8c04a' },
+  gravetender: { skin: SKINS[0], hair: '#c8d8d0', tunic: '#2f4a45', pants: '#1a2a28', boots: '#1a2020', belt: '#7aa89a', hat: 'hood', hatCol: '#2a3a3a', robe: true, weapon: 'wand', blade: '#6aff8a', beard: '#c8d8d0' },
+  abbot: { skin: SKINS[2], hair: '#2a1a12', tunic: '#c8782a', pants: '#e8e0d0', boots: '#e8e0d0', belt: '#7a2a1a', hat: 'none', weapon: 'staff' },
+  hermit: { skin: SKINS[3], hair: '#6a8a4a', tunic: '#4f7a3f', pants: '#6a4a2a', boots: '#5a3a22', belt: '#8a6a3a', hat: 'hood', hatCol: '#4f8f4f', robe: true, weapon: 'staff', beard: '#8aa070' },
+  emberacolyte: { skin: '#e8b080', hair: '#ffb030', tunic: '#c8381a', sleeve: '#e85a2a', pants: '#8a2418', boots: '#3a1410', belt: '#ffd040', robe: true, hat: 'hood', hatCol: '#e0481f', eye: '#ffe040', weapon: 'wand', blade: '#ffd040', trim: '#ffd040' },
   emberknight: { skin: '#6a2a1a', hair: '#2a1a1a', tunic: '#3a1a1a', pants: '#2a1a1a', boots: '#1a1010', belt: '#ff6a2a', hat: 'horns', hatCol: '#4a2a2a', eye: '#ff8a2a', weapon: 'sword', blade: '#ff6a2a', shield: true, shieldCol: '#2a1a1a', trim: '#ff6a2a' },
   goblin: { skin: '#6fae48', hair: '#4a7a30', tunic: '#7a5a30', pants: '#4a3a22', boots: '#2a1a0a', belt: '#2a1a0a', hat: 'none', weapon: 'dagger', ears: true, eye: '#ff3a3a' },
   ghoul: { skin: '#7a9a7a', hair: '#3a4a3a', tunic: '#4a4a5a', pants: '#2a2a3a', boots: '#2a2a2a', belt: '#2a2a2a', hat: 'none', eye: '#ffe83a', ears: true },
@@ -508,22 +513,22 @@ function scarab(fr) {
   g.set(7, 6, '#fff'); g.set(9, 6, '#fff'); g.line(8, 7, 8, 12, '#14403f');
   return g.outline().canvas();
 }
-function scorpion(fr) { // faces right
-  const g = new Grid(16, 16), b = '#8a5a2a', d = '#a06a30';
+function scorpion(fr, p = {}) { // faces right
+  const g = new Grid(16, 16), b = p.b || '#8a5a2a', d = p.d || '#a06a30', leg = p.leg || '#5a3a18', eyeA = p.eye || '#ffd23a', eyeB = p.sting || '#ff4a2a';
   g.ell(7, 10, 4.6, 2.8, b); g.ell(11, 10, 2, 2, b);
   g.rect(13, 7 + fr, 3, 2, d); g.rect(13, 12 - fr, 3, 2, d); g.set(15, 7 + fr, b); g.set(15, 13 - fr, b);
   for (const [x, y] of [[2, 9], [1, 7], [1, 5], [2, 3], [4, 2], [6, 2], [8, 3]]) g.rect(x, y + (fr ? 0 : 1), 2, 2, b);
-  for (const x of [4, 6, 8, 10]) g.rect(x, 12 + ((x + fr) % 2), 1, 2, '#5a3a18');
+  for (const x of [4, 6, 8, 10]) g.rect(x, 12 + ((x + fr) % 2), 1, 2, leg);
   g.shade();
-  g.set(9, 4 + (fr ? 0 : 1), '#ffd23a'); g.set(12, 9, '#ff4a2a');
+  g.set(9, 4 + (fr ? 0 : 1), eyeA); g.set(12, 9, eyeB);
   return g.outline().canvas();
 }
-function viper(fr) { // faces right
-  const g = new Grid(16, 16);
-  for (let i = 0; i < 12; i++) g.rect(2 + i, 9 + Math.round(Math.sin(i / 1.5 + fr * 1.6) * 2), 2, 2, i % 3 ? '#9ab040' : '#7a9030');
-  g.ell(14, 8, 2.2, 1.8, '#9ab040');
+function viper(fr, p = {}) { // faces right
+  const g = new Grid(16, 16), a = p.a || '#9ab040', b = p.b || '#7a9030';
+  for (let i = 0; i < 12; i++) g.rect(2 + i, 9 + Math.round(Math.sin(i / 1.5 + fr * 1.6) * 2), 2, 2, i % 3 ? a : b);
+  g.ell(14, 8, 2.2, 1.8, a);
   g.shade();
-  g.set(14, 7, '#ffe040'); g.set(15, 9, '#ff3a3a');
+  g.set(14, 7, p.eye || '#ffe040'); g.set(15, 9, p.tongue || '#ff3a3a');
   return g.outline().canvas();
 }
 function elemental(fr) {
@@ -565,6 +570,7 @@ function dragon(fr, p) {
 
 const SAND_TEX = ['#c8a868', '#b89858', '#d8b878', '#a88848', '#c8a868'];
 const ICE_TEX = ['#bfe0f0', '#a8d0e8', '#d8f0ff', '#8ab8d8', '#bfe0f0'];
+const MOLTEN_TEX = ['#3a1a14', '#2a120e', '#5a2a1a', '#7a3a1a', '#3a1a14'];
 const OBS_TEX = ['#2a2a3a', '#1a1a28', '#3a3a4a', '#4a2a5a', '#2a2a3a'];
 // every creature: [painter, palette]
 const MOB_ART = {
@@ -573,15 +579,19 @@ const MOB_ART = {
   wolf: ['wolf', {}], snowwolf: ['wolf', { c: '#e8eef5', d: '#b0bccc', l: '#ffffff', eye: '#3aafff' }], lavahound: ['wolf', { c: '#5a2a2a', d: '#3a1a1a', l: '#ff8a2a', eye: '#ff4a1a' }],
   golem: ['golem', {}], sandgolem: ['golem', { tex: SAND_TEX, eye: '#ff4a2a', rune: '#ffd23a', moss: null }],
   icegolem: ['golem', { tex: ICE_TEX, eye: '#3aafff', rune: '#8affff', moss: null }], obsidiangolem: ['golem', { tex: OBS_TEX, eye: '#ff6a1a', rune: '#ff4a1a', moss: null }],
+  slagcrawler: ['scorpion', { b: '#3a2a2a', d: '#5a3a30', leg: '#1a1010', eye: '#ffb030', sting: '#ff8a2a' }],
+  magmaserpent: ['viper', { a: '#d84a1a', b: '#7a1a0a', eye: '#ffe040', tongue: '#ffd23a' }],
+  moltengolem: ['golem', { tex: MOLTEN_TEX, eye: '#ffd23a', rune: '#ff7a1a', moss: null }],
+  emberlord: ['bonelord', { tint: 'rgba(255,100,20,0.5)' }],
   scarab: ['scarab', {}], scorpion: ['scorpion', {}], sandviper: ['viper', {}], fireelem: ['elemental', {}], sunking: ['kingmummy', {}], bonelord: ['bonelord', {}],
   glacius: ['bonelord', { tint: 'rgba(90,170,255,0.55)' }],
   rimefang: ['dragon', { body: '#7ab8e8', belly: '#d8f0ff', wing: '#4a88c8', eye: '#ffffff', horn: '#e8f4ff' }],
   cinderwing: ['dragon', { body: '#b02a1a', belly: '#ff8a2a', wing: '#6a1a1a', eye: '#ffe040', horn: '#2a1a1a' }],
 };
 const PAINT = { slime, bat, wolf, golem, scarab, scorpion, viper, elemental, kingmummy: kingMummy, dragon, bonelord };
-const HUMANOID_MOB = new Set(['goblin', 'skeleton', 'ghoul', 'wraith', 'mummy', 'frostsprite', 'yeti', 'emberknight']);
+const HUMANOID_MOB = new Set(['goblin', 'skeleton', 'ghoul', 'wraith', 'mummy', 'frostsprite', 'yeti', 'emberknight', 'emberacolyte']);
 /** creatures drawn facing right that mirror when they face left */
-export const SIDE_MOBS = new Set(['wolf', 'snowwolf', 'lavahound', 'scorpion', 'sandviper']);
+export const SIDE_MOBS = new Set(['wolf', 'snowwolf', 'lavahound', 'scorpion', 'sandviper', 'slagcrawler', 'magmaserpent']);
 
 function bonelord(fr) {
   const g = new Grid(32, 32);

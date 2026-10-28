@@ -7,7 +7,7 @@ const NW = 128; // the original Eldermoor island occupies the north-west 128x128
 // Ground layer
 export const G = {
   GRASS: 0, FOREST: 1, SWAMP: 2, SAND: 3, WATER: 4, DEEP: 5, PATH: 6, FLOOR: 7, RUIN: 8, VOID: 9, CRYPT: 10,
-  SNOW: 11, ICE: 12, DUNE: 13, BASALT: 14, ASH: 15, LAVA: 16, BRIDGE: 17, FROST: 18,
+  SNOW: 11, ICE: 12, DUNE: 13, BASALT: 14, ASH: 15, LAVA: 16, BRIDGE: 17, FROST: 18, EMBER: 19,
 };
 // Object layer (things standing on the ground)
 export const O = {
@@ -340,11 +340,13 @@ export function generateDungeon(seed, theme = 'crypt') {
   const o = new Uint8Array(W * H);
   const idx = (x, y) => y * W + x;
   const r = rng(seed);
-  // the crypt is a snake of 8 rooms; the frozen depths wind through 10 (every step is to an adjacent cell)
+  // the crypt is a snake of 8 rooms; the frozen depths wind through 10, the ember forge through 11 (every step is to an adjacent cell)
   const cells = theme === 'ice'
     ? [[0, 2], [1, 2], [1, 1], [0, 1], [0, 0], [1, 0], [2, 0], [2, 1], [3, 1], [3, 0]]
-    : [[0, 2], [1, 2], [2, 2], [2, 1], [1, 1], [1, 0], [2, 0], [3, 0]];
-  const FLOOR = theme === 'ice' ? G.FROST : G.CRYPT;
+    : theme === 'fire'
+      ? [[0, 2], [1, 2], [2, 2], [3, 2], [3, 1], [2, 1], [1, 1], [0, 1], [0, 0], [1, 0], [2, 0]] // the forge: a long serpentine of 11 rooms
+      : [[0, 2], [1, 2], [2, 2], [2, 1], [1, 1], [1, 0], [2, 0], [3, 0]];
+  const FLOOR = theme === 'ice' ? G.FROST : theme === 'fire' ? G.EMBER : G.CRYPT;
   const rooms = cells.map(([cx, cy], i) => {
     const boss = i === cells.length - 1, entry = i === 0;
     const w = boss ? 22 + Math.floor(r() * 4) : entry ? 11 : 12 + Math.floor(r() * 9);
