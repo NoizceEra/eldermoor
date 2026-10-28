@@ -2,7 +2,7 @@ import { TOWN, CAMP } from './world.js';
 
 export const SEED = 20261028;
 export const TICK_MS = 50;
-export const MAX_LEVEL = 30;
+export const MAX_LEVEL = 60;
 export const INV_SIZE = 20;
 export const DUNGEON_SEED = 777;
 export const DUNGEON_REC_LVL = 14;
@@ -54,9 +54,11 @@ export const MOBS = {
   goblin: { name: 'Goblin Raider', lvl: 9, hp: 150, dmg: [12, 20], moveMs: 400, atkMs: 1200, range: 1.5, aggro: 6, leash: 10, xp: 60, gold: [6, 16], respawn: 24000 },
   skeleton: { name: 'Bone Archer', lvl: 13, hp: 230, dmg: [18, 30], moveMs: 430, atkMs: 1500, range: 5, aggro: 8, leash: 11, xp: 100, gold: [10, 26], respawn: 26000 },
   ghoul: { name: 'Crypt Ghoul', lvl: 15, hp: 300, dmg: [24, 36], moveMs: 380, atkMs: 1200, range: 1.5, aggro: 7, leash: 12, xp: 120, gold: [14, 30], respawn: 1e9 },
-  wraith: { name: 'Grave Wraith', lvl: 17, hp: 260, dmg: [30, 42], moveMs: 300, atkMs: 1400, range: 4.5, aggro: 8, leash: 12, xp: 150, gold: [18, 36], respawn: 1e9 },
-  bonelord: { name: 'The Bone Lord', lvl: 24, hp: 4600, dmg: [55, 90], moveMs: 650, atkMs: 1800, range: 5.5, aggro: 12, leash: 22, xp: 3200, gold: [500, 800], respawn: 1e9, boss: true },
-  golem: { name: 'Moss Golem', lvl: 20, hp: 2200, dmg: [40, 70], moveMs: 700, atkMs: 2000, range: 2.2, aggro: 9, leash: 14, xp: 1200, gold: [200, 400], respawn: 120000, boss: true },
+  wraith: { name: 'Grave Wraith', mag: true, lvl: 17, hp: 260, dmg: [30, 42], moveMs: 300, atkMs: 1400, range: 4.5, aggro: 8, leash: 12, xp: 150, gold: [18, 36], respawn: 1e9 },
+  bonelord: { name: 'The Bone Lord', lvl: 24, hp: 4600, dmg: [55, 90], moveMs: 650, atkMs: 1800, range: 5.5, aggro: 12, leash: 22, xp: 3200, gold: [500, 800], respawn: 1e9, boss: true, mag: true,
+    specials: [{ kind: 'summon', type: 'skeleton', n: 2, cd: 16000, max: 6, range: 14 }, { kind: 'drain', r: 4, cd: 11000, mult: 1.2 }, { kind: 'slam', range: 7, cd: 8000, r: 2.4, mult: 2, warnMs: 1000, stun: 800 }] },
+  golem: { name: 'Moss Golem', lvl: 20, hp: 2200, dmg: [40, 70], moveMs: 700, atkMs: 2000, range: 2.2, aggro: 9, leash: 14, xp: 1200, gold: [200, 400], respawn: 120000, boss: true,
+    specials: [{ kind: 'slam', range: 6, cd: 9000, r: 2.2, mult: 2.2, warnMs: 1100, stun: 1200 }] },
 };
 
 export const QUESTS = [

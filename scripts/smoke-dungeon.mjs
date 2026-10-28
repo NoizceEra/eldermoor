@@ -77,14 +77,21 @@ const types = new Set(A.ents.filter((e) => e.k === 'm').map((e) => e.s));
 ok([...types].every((t) => ['skeleton', 'ghoul', 'wraith', 'bonelord'].includes(t)), `only crypt monsters here (${[...types].join(', ')})`);
 const boss = A.ents.find((e) => e.k === 'm' && e.s === 'bonelord');
 ok(!!boss, 'The Bone Lord is present');
-let killed = false;
-for (let i = 0; i < 160 && !killed; i++) {
+let killed = false, last = null, still = 0;
+for (let i = 0; i < 400 && !killed; i++) {
   const b = A.ents.find((e) => e.k === 'm' && e.s === 'bonelord');
   if (!b) { killed = A.logs.some((l) => /falls/.test(l)); await wait(150); continue; }
   const me = A.pos();
   A.tx({ t: 'target', id: b.i });
-  if (Math.hypot(b.x - me.x, b.y - me.y) > 1.4) A.tx({ t: 'move', dx: Math.abs(b.x - me.x) >= Math.abs(b.y - me.y) ? Math.sign(b.x - me.x) : 0, dy: Math.abs(b.x - me.x) >= Math.abs(b.y - me.y) ? 0 : Math.sign(b.y - me.y) });
-  else A.tx({ t: 'skill', n: 1 });
+  still = last && last.x === me.x && last.y === me.y ? still + 1 : 0;
+  last = { x: me.x, y: me.y };
+  const far = Math.hypot(b.x - me.x, b.y - me.y) > 1.4;
+  if (far) {
+    const horiz = Math.abs(b.x - me.x) >= Math.abs(b.y - me.y);
+    let dx = horiz ? Math.sign(b.x - me.x) : 0, dy = horiz ? 0 : Math.sign(b.y - me.y);
+    if (still >= 2) { [dx, dy] = [[1, 0], [-1, 0], [0, 1], [0, -1]][Math.floor(Math.random() * 4)]; } // blocked by adds or pillars: sidestep
+    A.tx({ t: 'move', dx, dy });
+  } else A.tx({ t: 'skill', n: 1 });
   await wait(160);
 }
 ok(A.logs.some((l) => /falls/.test(l)), 'boss killed, victory message received');

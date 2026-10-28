@@ -1,6 +1,7 @@
 // Procedural pixel art. Every sprite is built pixel-by-pixel on a small grid, given a
 // two-tone bevel shade and a 1px dark outline, then cached as a canvas.
 import { hash2 } from '/shared/world.js';
+import { SKILLS } from '/shared/jobs.js';
 
 const hex = (h) => { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
 const toHex = (a) => '#' + a.map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('');
@@ -101,6 +102,9 @@ function weapon(g, kind, x, blade, mirror = false) {
       break;
     case 'spear':
       g.rect(x, 2, 1, 12, WOOD); g.rect(x, 0, 1, 3, '#dfe4ec'); g.set(x - 1, 2, '#9aa0ac'); g.set(x + 1, 2, '#9aa0ac');
+      break;
+    case 'wand':
+      g.rect(x, 4, 1, 8, WOOD); g.rect(x, 2, 1, 2, blade === BLADE[0] ? '#ff7aff' : blade); g.set(x, 1, '#ffffff');
       break;
     case 'dagger':
       g.rect(x, 6, 1, 4, '#cfd4dc'); g.rect(x - 1, 10, 3, 1, '#6a4a2a'); g.set(x, 11, '#6a4a2a');
@@ -203,6 +207,9 @@ const PRESET = {
   warrior: { hair: '#5a3a22', tunic: '#b03a3a', pants: '#4a4a5a', boots: '#5a3a22', belt: '#3a2a1a', hat: 'helm', weapon: 'sword', shield: true },
   mage: { hair: '#e8e0c8', tunic: '#6a3fb0', pants: '#3a2a5a', boots: '#3a2a1a', belt: '#e8c04a', hat: 'wizard', hatCol: '#5a2f9a', weapon: 'staff', robe: true },
   ranger: { hair: '#7a4a22', tunic: '#3f7a3f', pants: '#6a4a2a', boots: '#3a2a1a', belt: '#2a1a0a', hat: 'hood', hatCol: '#2f5f33', weapon: 'bow' },
+  cleric: { hair: '#c8a060', tunic: '#f0f0e8', pants: '#c8b070', boots: '#7a5a2a', belt: '#f0d060', hat: 'cap', hatCol: '#f0d060', weapon: 'mace', robe: true },
+  rogue: { hair: '#2a2a3a', tunic: '#3a3a4a', pants: '#2a2a34', boots: '#1a1a22', belt: '#8a2a2a', hat: 'hood', hatCol: '#2f2f3f', weapon: 'dagger' },
+  warlock: { hair: '#3a1a3a', tunic: '#5a1f5a', pants: '#2a1030', boots: '#1a1020', belt: '#c060c0', hat: 'wizard', hatCol: '#3a1050', weapon: 'wand', robe: true },
 };
 const NPC_LOOK = {
   elder: { skin: SKINS[0], hair: '#f2f2f2', tunic: '#3a6ab0', pants: '#2a4a80', boots: '#3a2a1a', belt: '#e8c04a', robe: true, beard: '#f2f2f2', weapon: 'staff', hat: 'none' },
@@ -339,6 +346,10 @@ export function itemIcon(base, r = 0) {
         g.line(3, 13, 10, 6, WOOD); g.line(4, 13, 10, 7, adj(WOOD, 0.8)); g.ell(11, 5, 3, 3, b); g.set(11, 1, b); g.set(14, 5, b); g.set(8, 5, b); break;
       case 'staff':
         g.line(3, 14, 11, 6, WOOD); g.line(4, 14, 12, 6, adj(WOOD, 0.8)); g.ell(12, 4, 2.2, 2.2, gem); g.set(11, 3, '#fff'); break;
+      case 'dagger':
+        g.line(3, 13, 11, 5, b); g.line(4, 13, 12, 5, adj(b, 0.8)); g.rect(2, 10, 4, 2, '#c8a040'); g.set(2, 14, WOOD); break;
+      case 'wand':
+        g.line(3, 14, 12, 5, WOOD); g.line(4, 14, 13, 5, adj(WOOD, 0.8)); g.ell(13, 4, 2.2, 2.2, gem); g.set(12, 3, '#fff'); break;
       case 'bow':
         for (let i = 0; i <= 10; i++) { const x = 4 + Math.round(6 * Math.sin((i / 10) * Math.PI)); g.set(x, 2 + i, WOOD); g.set(x + 1, 2 + i, adj(WOOD, 0.8)); }
         g.line(4, 2, 4, 12, '#ece6d0'); break;
@@ -365,3 +376,37 @@ export function itemIcon(base, r = 0) {
 }
 
 export const classPortrait = (cls) => playerSprite(cls, 0, 0, 0);
+
+/** 16x16 skill icon built from the (glyph, colour) pair in the shared skill table */
+export function skillIcon(id) {
+  return memo(`sk${id}`, () => {
+    const [glyph, col] = SKILLS[id].ic;
+    const g = new Grid(16, 16), d = adj(col, 0.7), l = adj(col, 1.45);
+    const ring = (cx, cy, r, c, step = 0.35) => { for (let a = 0; a < 6.283; a += step) g.set(cx + Math.cos(a) * r, cy + Math.sin(a) * r, c); };
+    switch (glyph) {
+      case 'slash': for (let a = -2.7; a <= -0.4; a += 0.1) { g.rect(8 + Math.cos(a) * 6.5, 10 + Math.sin(a) * 6.5, 2, 2, col); g.set(8 + Math.cos(a) * 4.5, 10 + Math.sin(a) * 4.5, d); } g.line(3, 13, 13, 13, '#c03a3a'); break;
+      case 'shield': g.rect(4, 3, 8, 8, col); g.rect(6, 11, 4, 2, col); g.rect(7, 5, 2, 5, l); g.rect(5, 6, 6, 1, l); break;
+      case 'horn': g.rect(3, 6, 4, 4, col); g.line(7, 6, 12, 2, col); g.line(7, 9, 12, 13, col); g.rect(11, 3, 2, 10, d); g.set(14, 5, '#ff6a6a'); g.set(14, 10, '#ff6a6a'); break;
+      case 'eye': g.ell(8, 8, 6.5, 3.5, '#fff'); g.ell(8, 8, 3, 3, col); g.set(8, 8, '#16121f'); g.set(7, 7, '#fff'); break;
+      case 'spin': ring(8, 8, 6, col, 0.25); ring(8, 8, 3, d, 0.5); g.rect(12, 2, 3, 3, l); break;
+      case 'flame': g.ell(8, 10, 4.5, 5, col); g.ell(8, 11, 2.5, 3, l); g.set(8, 2, col); g.set(8, 3, col); g.set(7, 4, col); g.set(9, 4, col); g.set(7, 5, col); break;
+      case 'snow': for (let a = 0; a < 6.283; a += 1.047) g.line(8, 8, 8 + Math.cos(a) * 6.5, 8 + Math.sin(a) * 6.5, col); g.ell(8, 8, 1.6, 1.6, l); break;
+      case 'star': g.rect(7, 1, 2, 14, col); g.rect(1, 7, 14, 2, col); g.line(3, 3, 13, 13, d); g.line(13, 3, 3, 13, d); g.ell(8, 8, 2, 2, l); break;
+      case 'bolt': g.line(10, 1, 5, 8, col); g.line(5, 8, 11, 8, col); g.line(11, 8, 6, 15, col); g.line(11, 1, 6, 8, l); break;
+      case 'meteor': g.ell(10, 6, 4.2, 4.2, col); g.ell(10, 6, 2, 2, l); g.line(1, 15, 7, 9, d); g.line(1, 12, 5, 8, col); g.line(4, 15, 8, 11, col); break;
+      case 'arrow': g.line(2, 14, 12, 4, '#8a6a3a'); g.rect(11, 2, 4, 3, col); g.line(1, 11, 4, 14, '#cc3a3a'); g.line(2, 12, 2, 15, '#cc3a3a'); break;
+      case 'arrows': for (const y of [3, 8, 13]) { g.line(1, 8, 13, y, '#8a6a3a'); g.rect(12, y - 1, 3, 2, col); } break;
+      case 'boot': g.rect(4, 4, 5, 7, col); g.rect(4, 11, 9, 3, d); g.rect(8, 8, 5, 3, col); g.line(0, 5, 3, 5, '#e8e8f0'); g.line(0, 8, 3, 8, '#e8e8f0'); break;
+      case 'web': for (let a = 0; a < 6.283; a += 0.785) g.line(8, 8, 8 + Math.cos(a) * 7, 8 + Math.sin(a) * 7, d); ring(8, 8, 5, col); ring(8, 8, 2.5, col); break;
+      case 'drop': g.ell(8, 10, 4.5, 4.8, col); g.set(8, 2, col); g.set(8, 3, col); g.rect(7, 4, 2, 2, col); g.set(6, 8, l); g.set(6, 9, l); break;
+      case 'sun': g.ell(8, 8, 3.2, 3.2, col); for (let a = 0; a < 6.283; a += 0.785) g.line(8 + Math.cos(a) * 5, 8 + Math.sin(a) * 5, 8 + Math.cos(a) * 7.5, 8 + Math.sin(a) * 7.5, l); break;
+      case 'cross': g.rect(6, 2, 4, 12, col); g.rect(2, 6, 12, 4, col); g.rect(7, 4, 2, 8, l); g.rect(4, 7, 8, 2, l); break;
+      case 'dagger': g.line(3, 13, 12, 4, col); g.line(4, 13, 12, 5, d); g.line(2, 10, 6, 14, '#c8a040'); g.set(13, 3, l); break;
+      case 'bomb': g.ell(8, 10, 5, 5, col); g.rect(8, 3, 2, 3, '#8a6a3a'); g.set(10, 2, '#ffd23a'); g.set(11, 1, '#ff8a2a'); g.set(6, 8, l); break;
+      case 'skull': g.ell(8, 7, 5, 5, col); g.rect(5, 11, 6, 3, col); g.rect(5, 6, 2, 2, '#16121f'); g.rect(9, 6, 2, 2, '#16121f'); g.rect(7, 12, 1, 2, '#16121f'); g.rect(9, 12, 1, 2, '#16121f'); break;
+      case 'orb': g.ell(8, 8, 5.5, 5.5, col); g.ell(6, 6, 2, 2, l); g.ell(10, 10, 2.5, 2.5, d); break;
+      default: g.rect(4, 4, 8, 8, col);
+    }
+    return g.shade().outline().canvas();
+  });
+}

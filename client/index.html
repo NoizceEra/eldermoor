@@ -26,7 +26,7 @@
     <div class="err" id="loginErr"></div>
     <div class="small" id="online"></div>
   </form>
-  <div class="small foot">WASD / arrows walk &middot; click to move &amp; attack &middot; 1-3 skills &middot; Q potion &middot; I pack &middot; E talk &middot; Enter chat</div>
+  <div class="small foot">WASD walk &middot; click to move &amp; attack &middot; 1-6 skills &middot; Q potion &middot; C hero &middot; J jobs &middot; K skills &middot; I pack &middot; E talk &middot; Enter chat</div>
 </div>
 
 <div id="ui" class="hidden">
@@ -34,14 +34,18 @@
     <div class="row"><b id="pName"></b><span id="pLvl"></span></div>
     <div class="bar hp"><i id="hpBar"></i><span id="hpTxt"></span></div>
     <div class="bar xp"><i id="xpBar"></i></div>
+    <div class="bar xp job"><i id="jxpBar"></i></div>
     <div class="row small"><span id="pGold"></span><span id="pStats"></span></div>
   </div>
+  <div id="buffs"></div>
   <div id="party" class="hidden"></div>
   <div id="invite" class="panel hidden"></div>
   <div id="trade" class="panel hidden"></div>
+  <div id="char" class="panel hidden"></div>
   <div id="targetFrame" class="panel hidden">
     <div class="row"><b id="tName"></b><span id="tLvl"></span></div>
     <div class="bar hp"><i id="tBar"></i></div>
+    <div id="tFx" class="fxrow"></div>
   </div>
   <div id="side">
     <canvas id="minimap" width="64" height="64" class="panel"></canvas>
@@ -66,6 +70,7 @@
       <button data-act="chat">CHAT</button>
       <button data-act="tgt">TARGET</button>
       <button data-act="talk">TALK</button>
+      <button data-act="char">HERO</button>
       <button data-act="pack">PACK</button>
     </div>
   </div>

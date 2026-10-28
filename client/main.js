@@ -1,6 +1,7 @@
 // Eldermoor client: rendering, input, networking and UI.
 import { W, H, G, O, TOWN, generateWorld, generateDungeon, isSolid, inTown } from '/shared/world.js';
-import { SEED, CLASSES, MOBS, QUESTS, RARITY, NPCS } from '/shared/data.js';
+import { SEED, MOBS, QUESTS, RARITY, NPCS } from '/shared/data.js';
+import { JOBS, JOB_ORDER, SKILLS, ATTRS, ATTR_INFO, EFFECTS, skillsOfJob } from '/shared/jobs.js';
 import * as SP from '/client/sprites.js';
 import { TS, buildWorldArt, drawWaterTile, treeSprite } from '/client/gfx.js';
 
@@ -36,12 +37,13 @@ let npcs = NPCS.map((n) => ({ ...n }));
 const fxs = [], parts = [], floaters = [];
 let me = null; // private state from server
 let packetN = 0, timeOff = 0;
-const skillReady = { 1: 0, 2: 0, 3: 0 };
+const skillReady = {}; // skill id -> ready time
+let gcdUntil = 0, meAt = 0, lastBuffDraw = 0;
 let potReady = 0;
 let goal = null, nextStep = 0, shake = 0;
 const keys = new Set();
 let camX = 0, camY = 0;
-let selClass = 'warrior', selSlot = -1, shopOpen = false, dialogNpc = 0;
+let selClass = 'warrior',  selSlot = -1, shopOpen = false, dialogNpc = 0;
 const chatLines = [];
 let party = { id: 0, leader: 0, members: [] };
 const pmData = new Map(); // member id -> { h, mh, x, y } from the server's party tick
@@ -77,24 +79,7 @@ const sfx = {
 // ------------------------------------------------------------------ icons
 const urlCache = new Map();
 const iconURL = (b, r) => { const k = `${b}${r}`; if (!urlCache.has(k)) urlCache.set(k, SP.itemIcon(b, r).toDataURL()); return urlCache.get(k); };
-function skillGlyph(cls, n) {
-  const k = `sk${cls}${n}`;
-  if (urlCache.has(k)) return urlCache.get(k);
-  const g = new SP.Grid(16, 16);
-  const id = cls + n;
-  if (id === 'warrior1') { for (let a = -2.7; a <= -0.4; a += 0.1) { g.rect(8 + Math.cos(a) * 6.5, 10 + Math.sin(a) * 6.5, 2, 2, '#e8e8f0'); g.set(8 + Math.cos(a) * 4.5, 10 + Math.sin(a) * 4.5, '#9aa0b0'); } g.line(3, 13, 13, 13, '#c03a3a'); g.line(5, 11, 11, 11, '#c03a3a'); }
-  else if (id === 'warrior2') { g.rect(4, 3, 8, 9, '#5a6a8a'); g.rect(6, 12, 4, 2, '#5a6a8a'); g.rect(7, 5, 2, 5, '#e8c04a'); g.rect(5, 7, 6, 1, '#e8c04a'); g.set(2, 2, '#ffd23a'); g.set(13, 2, '#ffd23a'); g.set(1, 8, '#ffd23a'); g.set(14, 8, '#ffd23a'); }
-  else if (id === 'warrior3') { g.rect(3, 6, 4, 4, '#e8c04a'); g.line(7, 6, 12, 2, '#e8c04a'); g.line(7, 9, 12, 13, '#e8c04a'); g.rect(11, 3, 2, 10, '#c8a030'); g.set(14, 5, '#ff6a6a'); g.set(14, 10, '#ff6a6a'); g.set(15, 7, '#ff6a6a'); }
-  else if (id === 'mage1') { g.ell(9, 9, 5, 5, '#e8581a'); g.ell(9, 9, 3, 3, '#ffb030'); g.ell(9, 9, 1.5, 1.5, '#fff2a0'); g.line(1, 15, 5, 11, '#ff8a20'); g.line(1, 12, 4, 10, '#ffb030'); }
-  else if (id === 'mage2') { for (const [x, y] of [[8, 2], [8, 14], [2, 8], [14, 8], [3, 3], [13, 13], [13, 3], [3, 13]]) g.line(8, 8, x, y, '#8fe0ff'); g.ell(8, 8, 2, 2, '#ffffff'); }
-  else if (id === 'mage3') { g.rect(6, 2, 4, 12, '#5fd35f'); g.rect(2, 6, 12, 4, '#5fd35f'); g.rect(7, 4, 2, 8, '#b8ffb8'); g.rect(4, 7, 8, 2, '#b8ffb8'); }
-  else if (id === 'ranger1') { g.line(2, 14, 12, 4, '#8a6a3a'); g.line(12, 4, 14, 2, '#dfe4ec'); g.rect(11, 2, 4, 2, '#dfe4ec'); g.line(1, 11, 4, 14, '#cc3a3a'); g.line(2, 12, 2, 15, '#cc3a3a'); }
-  else if (id === 'ranger2') { for (const [x1, y1] of [[14, 3], [14, 8], [14, 13]]) { g.line(2, 8, x1, y1, '#8a6a3a'); g.rect(x1 - 1, y1 - 1, 2, 2, '#dfe4ec'); } }
-  else { g.rect(4, 5, 5, 6, '#8a5a2a'); g.rect(4, 11, 9, 3, '#6a3a1a'); g.rect(8, 8, 5, 3, '#8a5a2a'); g.line(0, 5, 3, 5, '#e8e8f0'); g.line(0, 8, 3, 8, '#e8e8f0'); g.line(1, 11, 3, 11, '#e8e8f0'); g.set(11, 4, '#fff'); }
-  const u = g.shade().outline().canvas().toDataURL();
-  urlCache.set(k, u);
-  return u;
-}
+const skillURL = (id) => { const k = `sk${id}`; if (!urlCache.has(k)) urlCache.set(k, SP.skillIcon(id).toDataURL()); return urlCache.get(k); };
 
 // ------------------------------------------------------------------ networking
 function connect(name, pass, cls) {
@@ -195,7 +180,8 @@ function onEvent(m) {
   switch (m.e) {
     case 'dmg': {
       const [px, py] = tc(m.x, m.y);
-      const col = m.k === 'p' ? '#ff5a5a' : m.k === 'h' ? '#6aff8a' : m.k === 'c' ? '#ffe066' : '#ffffff';
+      if (m.k === 'x' || m.k === 'a') { floaters.push({ x: px, y: py - 8, txt: m.k === 'x' ? 'Miss' : 'Absorbed', col: m.k === 'x' ? '#b8b8c8' : '#ffe8a0', t0: t }); break; }
+      const col = m.k === 'p' ? '#ff5a5a' : m.k === 'h' ? '#6aff8a' : m.k === 'c' ? '#ffe066' : m.k === 'd' ? '#ff9a3a' : '#ffffff';
       floaters.push({ x: px + (Math.random() * 8 - 4), y: py - 8, txt: m.k === 'h' ? `+${m.v}` : m.k === 'c' ? `${m.v}!` : `${m.v}`, col, t0: t, big: m.k === 'c' });
       const e = ents.get(m.id);
       if (e && m.k !== 'h') e.hitAt = t;
@@ -204,8 +190,9 @@ function onEvent(m) {
       break;
     }
     case 'fx': {
+      if (m.k === 'proj') m = { ...m, k: m.vis }; // projectiles arrive as proj + visual
       const src = ents.get(m.id);
-      if (src && ['swing', 'bolt', 'arrow', 'fire', 'bash', 'cleave'].includes(m.k)) {
+      if (src && ['swing', 'bolt', 'arrow', 'fire', 'bash', 'cleave', 'holy', 'shadow', 'lightning'].includes(m.k)) {
         src.atkAt = t;
         if (m.tx !== undefined) src.atkDx = Math.sign(m.tx - m.x), src.atkDy = Math.sign(m.ty - m.y);
       }
@@ -221,7 +208,7 @@ function onEvent(m) {
       if (['cleave', 'bash', 'cry', 'nova', 'fire', 'heal', 'dash'].includes(m.k) && m.id === myId) sfx.skill();
       break;
     }
-    case 'cd': skillReady[m.n] = now() + m.ms; break;
+    case 'cd': skillReady[m.id] = now() + m.ms; gcdUntil = now() + 600; break;
     case 'pot': potReady = now() + m.ms; sfx.click(); break;
     case 'pickup': sfx.pickup(); break;
     case 'coin': sfx.coin(); break;
@@ -396,7 +383,10 @@ addEventListener('keydown', (e) => {
   keys.add(k);
   if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' ', 'tab'].includes(k)) e.preventDefault();
   if (k === 'enter') { $('chatIn').focus(); e.preventDefault(); }
-  else if (k === '1' || k === '2' || k === '3') tx({ t: 'skill', n: Number(k) });
+  else if (k.length === 1 && k >= '1' && k <= '6') tx({ t: 'skill', n: Number(k) });
+  else if (k === 'c') toggleChar();
+  else if (k === 'j') toggleChar('jobs');
+  else if (k === 'k') toggleChar('skills');
   else if (k === 'q') quaff();
   else if (k === 'i') toggleInv();
   else if (k === 'e') interact();
@@ -553,24 +543,45 @@ function addLine(html) {
   const d = document.createElement('div'); d.innerHTML = html; log.appendChild(d);
   while (log.children.length > 40) log.removeChild(log.firstChild);
 }
+
+const abbr = (id) => (EFFECTS[id] ? EFFECTS[id].name.slice(0, 2).toUpperCase() : id.slice(0, 2).toUpperCase());
+function renderPips(el, ids) {
+  const key = (ids || []).join(',');
+  if (el.dataset.k === key) return;
+  el.dataset.k = key;
+  el.innerHTML = (ids || []).map((id) => `<span class="pip" title="${EFFECTS[id] ? EFFECTS[id].name : id}" style="background:${EFFECTS[id] ? EFFECTS[id].col : '#fff'}"></span>`).join('');
+}
+function renderBuffs(t) {
+  const el = $('buffs');
+  if (!me) return;
+  const list = me.fx.map((f) => ({ ...f, ms: f.ms - (t - meAt) })).filter((f) => f.ms > 0);
+  el.innerHTML = list.map((f) => {
+    const d = EFFECTS[f.id] || { name: f.id, col: '#fff' };
+    return `<span class="buff" title="${d.name}" style="--c:${d.col}">${abbr(f.id)}<i>${Math.ceil(f.ms / 1000)}</i></span>`;
+  }).join('');
+}
 function buildSkillbar() {
   const bar = $('skillbar'); bar.innerHTML = '';
-  const cls = me ? me.cls : 'warrior';
-  CLASSES[cls].skills.forEach((s, i) => {
-    const el = document.createElement('div'); el.className = 'sk'; el.id = `sk${i + 1}`; el.title = `${s.n}: ${s.d}`;
-    el.innerHTML = `<img src="${skillGlyph(cls, i + 1)}"><span class="key">${i + 1}</span><div class="cd"></div><span class="cdt"></span>`;
-    el.onclick = () => tx({ t: 'skill', n: i + 1 });
+  const slots = me ? me.slots : 3;
+  for (let i = 0; i < slots; i++) {
+    const id = me && me.bar[i];
+    const el = document.createElement('div'); el.className = `sk${id ? '' : ' empty'}`; el.id = `sk${i + 1}`;
+    el.innerHTML = `${id ? `<img src="${skillURL(id)}">` : ''}<span class="key">${i + 1}</span><div class="cd"></div><span class="cdt"></span>`;
+    el.title = id ? `${SKILLS[id].name}: ${SKILLS[id].desc}` : 'Empty slot - open the Skills tab (K) to assign a skill';
+    el.onclick = () => (id ? tx({ t: 'skill', n: i + 1 }) : toggleChar('skills'));
     bar.appendChild(el);
-  });
+  }
   const p = document.createElement('div'); p.className = 'sk'; p.id = 'skq'; p.title = 'Health potion (Q)';
   p.innerHTML = `<img src="${iconURL('potion', 0)}"><span class="key">Q</span><div class="cd"></div><span class="cdt"></span><span class="cnt"></span>`;
   p.onclick = quaff; bar.appendChild(p);
 }
 function updateCooldowns(t) {
-  for (let i = 1; i <= 3; i++) {
-    const el = $(`sk${i}`); if (!el) continue;
-    const left = skillReady[i] - t, tot = (CLASSES[me.cls].skills[i - 1]).cd;
-    el.querySelector('.cd').style.height = left > 0 ? `${Math.min(100, (left / tot) * 100)}%` : '0';
+  const gcd = gcdUntil - t;
+  for (let i = 1; i <= me.slots; i++) {
+    const el = $(`sk${i}`), id = me.bar[i - 1];
+    if (!el || !id) continue;
+    const left = (skillReady[id] || 0) - t, tot = SKILLS[id].cd;
+    el.querySelector('.cd').style.height = left > 0 ? `${Math.min(100, (left / tot) * 100)}%` : gcd > 0 ? `${Math.min(100, (gcd / 600) * 100)}%` : '0';
     el.querySelector('.cdt').textContent = left > 0 ? (left / 1000).toFixed(left > 9900 ? 0 : 1) : '';
   }
   const q = $('skq'); if (q) {
@@ -582,21 +593,118 @@ function updateCooldowns(t) {
   }
 }
 function onMe() {
-  if ($('skillbar').dataset.cls !== me.cls) { buildSkillbar(); $('skillbar').dataset.cls = me.cls; }
+  meAt = now();
+  const sig = `${me.slots}|${me.bar.join(',')}`;
+  if ($('skillbar').dataset.sig !== sig) { buildSkillbar(); $('skillbar').dataset.sig = sig; }
+  const J = me.jobs[me.job];
   $('pName').textContent = me.name;
-  $('pLvl').textContent = `Lv ${me.lvl} ${CLASSES[me.cls].name}`;
+  $('pLvl').textContent = `Lv ${me.lvl} ${JOBS[me.job].name} ${J.lvl}`;
   $('hpBar').style.width = `${(me.hp / me.mh) * 100}%`;
   $('hpTxt').textContent = `${me.hp}/${me.mh}`;
   $('xpBar').style.width = me.xpn ? `${(me.xp / me.xpn) * 100}%` : '100%';
+  $('jxpBar').style.width = me.jxpn ? `${(J.xp / me.jxpn) * 100}%` : '100%';
   $('pGold').innerHTML = `<span style="color:#ffd23a">${me.gold}g</span>`;
-  $('pStats').textContent = `ATK ${me.st.atk}  DEF ${me.st.def}`;
+  $('pStats').innerHTML = `ATK ${me.st.atk}  DEF ${me.st.def}${me.points ? ` <span class="pts">+${me.points}pt</span>` : ''}`;
   $('death').classList.toggle('hidden', me.hp > 0);
   renderQuest();
   if (!$('inv').classList.contains('hidden')) renderInv();
   if (tradeView) renderTrade();
+  renderChar();
   const tg = me.tg && ents.get(me.tg);
   $('targetFrame').classList.toggle('hidden', !tg);
 }
+$('plate').addEventListener('click', () => toggleChar());
+
+// ---- character window: stats / jobs / skills
+let charTab = 'stats', selSkill = null;
+function toggleChar(tab) {
+  const box = $('char'), open = !box.classList.contains('hidden');
+  if (open && (!tab || tab === charTab)) { box.classList.add('hidden'); return; }
+  if (tab) charTab = tab;
+  box.classList.remove('hidden');
+  renderChar();
+}
+const mkEl = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html !== undefined) e.innerHTML = html; return e; };
+function renderChar() {
+  const box = $('char');
+  if (!me || box.classList.contains('hidden')) return;
+  const keepScroll = box.querySelector('.cbody') ? box.querySelector('.cbody').scrollTop : 0;
+  box.innerHTML = '';
+  const head = mkEl('div', 'row', `<b>${esc(me.name)}</b><span class="small">Lv ${me.lvl} &middot; ${JOBS[me.job].name} ${me.jobs[me.job].lvl}</span>`);
+  const x = mkEl('button', 'x', 'x'); x.onclick = () => box.classList.add('hidden'); head.appendChild(x);
+  const tabs = mkEl('div', 'tabs');
+  for (const [id, label] of [['stats', 'Stats'], ['jobs', 'Jobs'], ['skills', 'Skills']]) {
+    const b = mkEl('button', charTab === id ? 'on' : '', label); b.onclick = () => { charTab = id; renderChar(); }; tabs.appendChild(b);
+  }
+  const body = mkEl('div', 'cbody');
+  box.append(head, tabs, body);
+  (charTab === 'stats' ? statsTab : charTab === 'jobs' ? jobsTab : skillsTab)(body);
+  body.scrollTop = keepScroll;
+}
+function statsTab(body) {
+  const pct = me.xpn ? Math.round((me.xp / me.xpn) * 100) : 100;
+  body.appendChild(mkEl('div', 'small', `Experience ${me.xp}/${me.xpn || 'max'} (${pct}%) &nbsp; Attribute points: <b class="pts">${me.points}</b>`));
+  for (const k of ATTRS) {
+    const row = mkEl('div', 'arow', `<span class="nm">${ATTR_INFO[k][0]}</span><span class="val">${me.st.A[k]}</span><span class="ds">${ATTR_INFO[k][1]}${me.attr[k] ? ` <b class="pts">(+${me.attr[k]} spent)</b>` : ''}</span>`);
+    for (const n of [1, 5]) {
+      const b = mkEl('button', 'x', `+${n}`); b.disabled = me.points < n; b.onclick = () => tx({ t: 'attr', k, n }); row.appendChild(b);
+    }
+    body.appendChild(row);
+  }
+  const rb = mkEl('button', '', `Reset attributes (${25 * me.lvl}g)`); rb.style.fontSize = '7px'; rb.onclick = () => tx({ t: 'respec' });
+  const S = me.st;
+  const g = mkEl('div', 'dgrid', [
+    ['Attack power', S.atk], ['Defense', S.def], ['Magic resist', S.mres], ['Healing power', S.heal],
+    ['Crit chance', `${S.crit}%`], ['Crit damage', `${S.critDmg}%`], ['Dodge', `${S.dodge}%`], ['Haste', `${S.haste}%`],
+    ['Weapon', `${S.wt} (${S.range} tiles)`], ['Auto attack', `${(S.atkMs / 1000).toFixed(2)}s`],
+  ].map(([n, v]) => `<div><span>${n}</span><b>${v}</b></div>`).join(''));
+  body.append(g, rb, mkEl('div', 'small', `Job trait - ${esc(JOBS[me.job].trait)}`));
+}
+function jobsTab(body) {
+  const wait = Math.max(0, me.jobWait - (now() - meAt));
+  body.appendChild(mkEl('div', 'small', 'Each job levels on its own and keeps its level when you switch. Skills you learn stay with you. You cannot switch in combat.'));
+  for (const id of JOB_ORDER) {
+    const J = JOBS[id], lv = me.jobs[id].lvl, active = id === me.job;
+    const learned = skillsOfJob(id).filter((s) => SKILLS[s].lvl <= lv).length;
+    const card = mkEl('div', `jcard${active ? ' act' : ''}`);
+    card.style.setProperty('--c', J.color);
+    const cv = document.createElement('canvas'); cv.width = 16; cv.height = 16; cv.getContext('2d').drawImage(SP.playerSprite(id, 0, 0, 0), 0, 0);
+    const info = mkEl('div', 'grow', `<b style="color:${J.color}">${J.name}</b> <span class="small">${J.role}</span><br>${lv ? `Job level ${lv}/20` : 'Not played yet'} &middot; skills ${learned}/6${active && me.jxpn ? ` &middot; ${Math.round((me.jobs[id].xp / me.jxpn) * 100)}% to next` : ''}<div class="tr">${esc(J.trait)}</div>`);
+    const b = mkEl('button', '', active ? 'Active' : wait > 0 ? `Wait ${Math.ceil(wait / 1000)}s` : 'Switch');
+    b.disabled = active || wait > 0; b.onclick = () => tx({ t: 'job', id });
+    card.append(cv, info, b);
+    body.appendChild(card);
+  }
+}
+function skillsTab(body) {
+  body.appendChild(mkEl('div', 'small', selSkill ? `Now click a bar slot to place <b class="pts">${SKILLS[selSkill].name}</b>.` : 'Pick a learned skill, then click a bar slot. Any job can use any learned skill.'));
+  const sbar = mkEl('div', 'sbar');
+  for (let i = 0; i < 6; i++) {
+    const id = me.bar[i];
+    const locked = i >= me.slots;
+    const d = mkEl('div', 'slot', `${id ? `<img src="${skillURL(id)}">` : ''}<span class="n">${i + 1}</span>`);
+    if (locked) { d.style.opacity = 0.3; d.title = `Unlocks at level ${[0, 0, 0, 10, 20, 30][i]}`; }
+    else {
+      d.title = id ? `${SKILLS[id].name} (right-click to clear)` : 'Empty';
+      d.onclick = () => { if (selSkill) { tx({ t: 'bar', slot: i, skill: selSkill }); selSkill = null; } };
+      d.oncontextmenu = (e) => { e.preventDefault(); tx({ t: 'bar', slot: i, skill: null }); };
+    }
+    sbar.appendChild(d);
+  }
+  body.appendChild(sbar);
+  for (const jid of [me.job, ...JOB_ORDER.filter((j) => j !== me.job)]) { // active job first
+    const lv = me.jobs[jid].lvl;
+    body.appendChild(mkEl('div', 'skhead', `<b style="color:${JOBS[jid].color}">${JOBS[jid].name}</b> <span class="small">job level ${lv}</span>`));
+    for (const id of skillsOfJob(jid)) {
+      const sk = SKILLS[id], ok = lv >= sk.lvl, at = me.bar.indexOf(id);
+      const row = mkEl('div', `skrow${ok ? '' : ' locked'}${selSkill === id ? ' sel' : ''}`);
+      row.innerHTML = `<img src="${skillURL(id)}"><div class="grow"><b>${sk.name}</b> <span class="small">${ok ? `${sk.cd / 1000}s${at >= 0 ? ` &middot; slot ${at + 1}` : ''}` : `unlocks at job level ${sk.lvl}`}</span><div class="ds">${sk.desc}</div></div>`;
+      if (ok) row.onclick = () => { selSkill = selSkill === id ? null : id; renderChar(); };
+      body.appendChild(row);
+    }
+  }
+}
+
 function renderQuest() {
   const q = me.quest, el = $('quest');
   if (q.i >= QUESTS.length) { el.innerHTML = '<b>All quests complete</b>'; return; }
@@ -786,6 +894,7 @@ function drawEntity(o, t, tgId) {
   const barW = BIG.has(o.s) ? 26 : 12;
   if (o.k === 'm' && (o.h < o.mh || o.i === tgId)) drawHealthBar(Math.round(cx - barW / 2), py - 2 - (BIG.has(o.s) ? 0 : 0), barW, o.h / o.mh);
   if (o.k === 'p' && o.i !== myId) drawHealthBar(Math.round(cx - 6), py - 1, 12, o.h / o.mh, '#4ac86a');
+  if (o.fx && o.fx.length) o.fx.slice(0, 6).forEach((id, i) => { wx.fillStyle = EFFECTS[id] ? EFFECTS[id].col : '#fff'; wx.fillRect(Math.round(cx - o.fx.length * 2) + i * 4, py - 7, 3, 3); });
   const name = o.k === 'p' ? o.n : mobDef(o).name;
   const col = o.k === 'p' ? (o.i === myId ? '#8be88b' : inParty(o.i) ? '#6ab8ff' : '#ffffff') : levelColor(o.l);
   labels.push({ x: cx, y: py - (o.k === 'm' && (o.h < o.mh || o.i === tgId) ? 5 : 2), txt: o.k === 'p' ? name : `${name}  ${o.l}`, col, boss: !!mobDef(o).boss });
@@ -795,7 +904,7 @@ function drawEntity(o, t, tgId) {
 function drawFx(t) {
   for (let i = fxs.length - 1; i >= 0; i--) {
     const f = fxs[i], age = t - f.t0;
-    const dur = { swing: 220, bolt: 200, arrow: 200, fire: 380, cleave: 300, bash: 300, cry: 600, nova: 450, heal: 700, dash: 350, levelup: 1300, die: 1 }[f.k] || 300;
+    const dur = (f.k === 'warn' ? f.ms : { swing: 220, bolt: 200, arrow: 200, fire: 380, cleave: 300, bash: 300, cry: 600, nova: 450, heal: 700, dash: 350, levelup: 1300, die: 1, holy: 230, shadow: 250, lightning: 300, ring: 520, burst: 440, meteor: 700, rain: 850 }[f.k]) || 300;
     if (age > dur) { fxs.splice(i, 1); continue; }
     const p = age / dur;
     const [sx, sy] = tc(f.x, f.y).map((v, j) => Math.round(v - (j ? camY : camX)));
@@ -829,14 +938,82 @@ function drawFx(t) {
         break;
       }
       case 'cleave': {
-        const r = 8 + p * 20;
+        const r = 6 + p * (f.r ? f.r * 9 : 20);
         for (let k = 0; k < 28; k++) { const a = (k / 28) * 6.283 + p * 2; wx.fillStyle = k % 3 ? '#e8e8f0' : '#ff6a6a'; wx.fillRect(Math.round(sx + Math.cos(a) * r), Math.round(sy + Math.sin(a) * r), 2, 2); }
         break;
       }
       case 'nova': {
-        const r = 6 + p * 27;
-        for (let k = 0; k < 40; k++) { const a = (k / 40) * 6.283; wx.fillStyle = k % 2 ? '#8fe0ff' : '#ffffff'; wx.globalAlpha = 1 - p; wx.fillRect(Math.round(sx + Math.cos(a) * r), Math.round(sy + Math.sin(a) * r), 2, 2); }
+        const r = 6 + p * (f.r ? f.r * 8.6 : 27);
+        for (let k = 0; k < 40; k++) { const a = (k / 40) * 6.283; wx.fillStyle = k % 2 ? (f.col || '#8fe0ff') : '#ffffff'; wx.globalAlpha = 1 - p; wx.fillRect(Math.round(sx + Math.cos(a) * r), Math.round(sy + Math.sin(a) * r), 2, 2); }
         wx.globalAlpha = 1;
+        break;
+      }
+      case 'holy': case 'shadow': {
+        const c1 = f.k === 'holy' ? '#fff2a0' : '#b050ff', c2 = f.k === 'holy' ? '#ffffff' : '#3a1050';
+        for (let k = 4; k >= 0; k--) { const qq = Math.max(0, p - k * 0.05); wx.globalAlpha = 1 - k * 0.18; wx.fillStyle = k ? c1 : c2; wx.fillRect(Math.round(sx + (ex - sx) * qq) - 1, Math.round(sy + (ey - sy) * qq) - 1, 3, 3); }
+        wx.globalAlpha = 1;
+        break;
+      }
+      case 'lightning': {
+        let px = sx, py = sy;
+        wx.fillStyle = p < 0.5 ? '#ffffff' : '#ffe866';
+        for (let k = 1; k <= 7; k++) {
+          const q = k / 7, jx = k < 7 ? ((k * 37 + Math.floor(f.t0)) % 7) - 3 : 0, jy = k < 7 ? ((k * 53 + Math.floor(f.t0)) % 7) - 3 : 0;
+          const nx = sx + (ex - sx) * q + jx, ny = sy + (ey - sy) * q + jy;
+          for (let s2 = 0; s2 <= 6; s2++) wx.fillRect(Math.round(px + ((nx - px) * s2) / 6), Math.round(py + ((ny - py) * s2) / 6), 1, 1);
+          px = nx; py = ny;
+        }
+        break;
+      }
+      case 'warn': { // telegraphed ground circle
+        const rr = (f.r || 2) * TS, pulse = 0.25 + 0.15 * Math.sin(age / 90);
+        wx.fillStyle = f.col || '#ff3a2a';
+        for (let yy = -Math.ceil(rr); yy <= Math.ceil(rr); yy += 2) {
+          const hw = Math.sqrt(Math.max(0, rr * rr - yy * yy));
+          wx.globalAlpha = pulse * 0.6; wx.fillRect(Math.round(sx - hw), sy + yy, Math.round(hw * 2), 2);
+        }
+        wx.globalAlpha = 0.9;
+        for (let k = 0; k < 48; k++) { const a = (k / 48) * 6.283; wx.fillRect(Math.round(sx + Math.cos(a) * rr), Math.round(sy + Math.sin(a) * rr), 1, 1); }
+        wx.globalAlpha = 1;
+        break;
+      }
+      case 'ring': {
+        const rr = (f.r || 2) * TS * (0.3 + 0.7 * p);
+        wx.globalAlpha = 1 - p; wx.fillStyle = f.col || '#ffffff';
+        for (let k = 0; k < 40; k++) { const a = (k / 40) * 6.283; wx.fillRect(Math.round(sx + Math.cos(a) * rr), Math.round(sy + Math.sin(a) * rr), 2, 2); }
+        wx.globalAlpha = 1;
+        break;
+      }
+      case 'burst': {
+        const rr = (f.r || 2) * TS * p;
+        if (p < 0.35) { wx.globalAlpha = 0.5 * (1 - p / 0.35); wx.fillStyle = '#fff'; wx.fillRect(Math.round(sx - (f.r || 2) * TS * 0.5), Math.round(sy - (f.r || 2) * TS * 0.5), Math.round((f.r || 2) * TS), Math.round((f.r || 2) * TS)); wx.globalAlpha = 1; }
+        wx.globalAlpha = 1 - p; wx.fillStyle = f.col || '#ff6a3a';
+        for (let k = 0; k < 28; k++) { const a = (k / 28) * 6.283; wx.fillRect(Math.round(sx + Math.cos(a) * rr), Math.round(sy + Math.sin(a) * rr), 2, 2); }
+        wx.globalAlpha = 1;
+        break;
+      }
+      case 'meteor': {
+        const fall = Math.min(1, p / 0.55), rr = (f.r || 2.5) * TS;
+        if (p < 0.55) {
+          const cx = sx + (1 - fall) * 30, cy = sy - (1 - fall) * 130;
+          for (let k = 5; k >= 0; k--) { wx.fillStyle = ['#fff2a0', '#ffb030', '#ff6a1a', '#c8381a', '#6a1a10', '#3a1008'][k]; wx.fillRect(Math.round(cx + k * 2) - 3, Math.round(cy - k * 4) - 3, 7 - k, 7 - k); }
+        } else {
+          const q = (p - 0.55) / 0.45;
+          wx.globalAlpha = 1 - q; wx.fillStyle = '#ff6a1a';
+          for (let k = 0; k < 36; k++) { const a = (k / 36) * 6.283; wx.fillRect(Math.round(sx + Math.cos(a) * rr * q), Math.round(sy + Math.sin(a) * rr * q), 3, 3); }
+          wx.fillStyle = '#ffe066';
+          for (let k = 0; k < 18; k++) { const a = (k / 18) * 6.283 + 0.2; wx.fillRect(Math.round(sx + Math.cos(a) * rr * q * 0.6), Math.round(sy + Math.sin(a) * rr * q * 0.6), 2, 2); }
+          wx.globalAlpha = 1;
+        }
+        break;
+      }
+      case 'rain': {
+        const rr = (f.r || 3) * TS;
+        for (let k = 0; k < 18; k++) {
+          const a = k * 2.4, rad = rr * (0.2 + ((k * 7) % 10) / 12), ph = (p * 2.4 + k * 0.17) % 1;
+          wx.fillStyle = '#d8d8e0'; wx.fillRect(Math.round(sx + Math.cos(a) * rad), Math.round(sy + Math.sin(a) * rad * 0.8 - 50 * (1 - ph)), 1, 5);
+          if (ph > 0.9) { wx.fillStyle = '#ffd23a'; wx.fillRect(Math.round(sx + Math.cos(a) * rad) - 1, Math.round(sy + Math.sin(a) * rad * 0.8), 3, 1); }
+        }
         break;
       }
       case 'bash': {
@@ -1046,8 +1223,9 @@ function tickFrame() {
     if (pendingInvite && !pendingInvite.offer && t > pendingInvite.until) { pendingInvite = null; showInvite(); }
     if (me) {
       updateCooldowns(t);
+      if (t - lastBuffDraw > 250) { lastBuffDraw = t; renderBuffs(t); if (!$('char').classList.contains('hidden') && charTab === 'jobs') renderChar(); }
       const tg = me.tg && ents.get(me.tg);
-      if (tg && !tg.dying) { $('targetFrame').classList.remove('hidden'); $('tName').textContent = mobDef(tg).name; $('tName').style.color = levelColor(tg.l); $('tLvl').textContent = `Lv ${tg.l}`; $('tBar').style.width = `${(tg.h / tg.mh) * 100}%`; }
+      if (tg && !tg.dying) { $('targetFrame').classList.remove('hidden'); $('tName').textContent = mobDef(tg).name; $('tName').style.color = levelColor(tg.l); $('tLvl').textContent = `Lv ${tg.l}`; $('tBar').style.width = `${(tg.h / tg.mh) * 100}%`; renderPips($('tFx'), tg.fx); }
       else $('targetFrame').classList.add('hidden');
       const m = meEnt();
       if (m) { $('hpBar').style.width = `${(m.h / m.mh) * 100}%`; $('hpTxt').textContent = `${m.h}/${m.mh}`; if (dialogNpc) { const n = npcs.find((q) => q.id === dialogNpc); if (n && Math.hypot(n.x - m.x, n.y - m.y) > 6) closeDialog(); } }
@@ -1099,6 +1277,7 @@ addEventListener('touchstart', enableTouch, { once: true, passive: true }); // h
 
   const acts = {
     pack: toggleInv,
+    char: () => toggleChar(),
     talk: interact,
     tgt: cycleTarget,
     chat: () => { $('chat').classList.add('open'); $('chatIn').focus(); },
@@ -1112,12 +1291,13 @@ const cardsEl = $('classes');
 function selectClass(c) {
   selClass = c;
   [...cardsEl.children].forEach((el) => el.classList.toggle('sel', el.dataset.c === c));
-  $('classDesc').innerHTML = `<b style="color:#ffe066">${CLASSES[c].name}</b> - ${CLASSES[c].desc}<br>` + CLASSES[c].skills.map((s, i) => `${i + 1}. ${s.n}`).join(' &nbsp; ');
+  const J = JOBS[c], first = skillsOfJob(c)[0];
+  $('classDesc').innerHTML = `<b style="color:${J.color}">${J.name}</b> <span class="small">${J.role}</span> - ${J.desc}<br>${J.trait}<br>First skill: ${SKILLS[first].name}. You can learn every job later and mix their skills.`;
 }
-for (const c of Object.keys(CLASSES)) {
+for (const c of JOB_ORDER) {
   const el = document.createElement('div'); el.className = 'card'; el.dataset.c = c;
   const cv = document.createElement('canvas'); cv.width = 16; cv.height = 16; cv.getContext('2d').drawImage(SP.playerSprite(c, 0, 0, 0), 0, 0);
-  el.append(cv, document.createTextNode(CLASSES[c].name));
+  el.append(cv, document.createTextNode(JOBS[c].name));
   el.onclick = () => selectClass(c);
   cardsEl.appendChild(el);
 }
