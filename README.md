@@ -9,7 +9,7 @@ every sprite, tile, tree and icon is drawn in code (`client/sprites.js`, `client
 cd D:\ai-studio\eldermoor
 npm install
 npm start            # http://localhost:3000  (set PORT to change)
-npm test             # headless tests: jobs/progression, gear/looks/migration, solo loop, party, dungeon + boss, trading incl. dupe attacks (own save files)
+npm test             # headless tests: world/regions/quests/shops, jobs/progression, gear/looks/migration, solo loop, party, dungeon + boss, trading incl. dupe attacks (own save files)
 ```
 
 Open the URL in several tabs to play together. Heroes persist in `data/saves.json`.
@@ -21,6 +21,7 @@ Open the URL in several tabs to play together. Heroes persist in `data/saves.jso
 | WASD / arrows | walk |
 | Click ground / monster / NPC / loot | path there, attack, talk, pick up |
 | 1-6 | your skill bar (3 slots at start, 4/5/6 at levels 10/20/30) |
+| N (or click the minimap) | world map |
 | C / J / K | hero window: stats and attributes / jobs / skills (the Look tab changes your appearance) |
 | Q | health potion |
 | Space / Tab | target nearest enemy |
@@ -36,8 +37,9 @@ Open the URL in several tabs to play together. Heroes persist in `data/saves.jso
 
 ## What's in it
 
-- 128x128 island generated from a seed shared by client and server (meadow, forest, swamp, lakes, roads, walled town, two ruins).
-- 6 monster types (slime, bat, wolf, goblin, bone archer, **Moss Golem** boss), leash/aggro AI, respawns, XP + loot (4 rarities, stat gear, potions).
+- **A 256x256 world of four islands joined by plank bridges**, generated from a seed shared by client and server: Eldermoor (meadow, forest, swamp), **Sunscar Dunes** (desert, oasis, cacti), **Frostmarch** (snow, ice, pines) and **Cinderpeak** (basalt, ash, animated lava). Each has a walled town (Dunehaven, Frostwatch, Emberhold), its own shop, a quest giver, a boss arena and a monster camp. Terrain is baked in 32x32-tile chunks on demand, so the big map costs almost no memory.
+- **29 monster types** from level 2 to 54, many with status attacks (poison, bleed, burn, slow) and telegraphed slams. Three region bosses: **The Sun King**, **Rimefang** and **Cinderwing**, plus the Moss Golem and the Bone Lord. Respawns, XP and loot (4 rarities, stat gear, four tiers of health potions). If you die you return to the nearest town.
+- **20 quests** across the four towns: finish one and the next giver may be across a bridge. Shops get better the further you travel.
 - **The Sunken Crypt**: a private dungeon instance reached by the purple portal in the south-west ruins (press E / click it). 8 rooms, ghouls, wraiths, bone archers and a boss, **The Bone Lord**, with guaranteed rare+ loot. One instance per party (or per solo hero); it vanishes a minute after everyone leaves. Dying sends you back to town. Recommended level 14+.
 - **Multiclassing**: 6 jobs (Warrior, Mage, Ranger, Cleric, Rogue, Warlock), each with its own level (1-20) on top of your main level (1-60). 36 skills; every skill you learn stays with you and works in any bar slot under any job, so a Warrior can carry Frost Nova. Switch jobs any time you are out of combat (15s cooldown). Job levels keep their progress when you switch away.
 - **Attributes** (STR / DEX / INT / VIT / SPR): 3 points per level, plus automatic growth from your active job. Your weapon decides which attribute your auto attacks use.

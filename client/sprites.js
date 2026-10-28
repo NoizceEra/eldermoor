@@ -283,6 +283,13 @@ const NPC_LOOK = {
   elder: { skin: SKINS[0], hair: '#f2f2f2', tunic: '#3a6ab0', pants: '#2a4a80', boots: '#3a2a1a', belt: '#e8c04a', robe: true, beard: '#f2f2f2', weapon: 'staff', hat: 'none' },
   shop: { skin: SKINS[1], hair: '#6a3a1a', tunic: '#c0a060', pants: '#5a4a2a', boots: '#3a2a1a', belt: '#3a2a1a', apron: true, hat: 'cap', hatCol: '#a03030' },
   guard: { skin: SKINS[1], hair: '#3a2a1a', tunic: '#3a5a9a', pants: '#4a4a5a', boots: '#2a2a2a', belt: '#c8a040', hat: 'helm', weapon: 'spear', shield: false },
+  scout: { skin: SKINS[2], hair: '#2a1a12', tunic: '#d8c090', pants: '#8a6a3a', boots: '#4a3a22', belt: '#a03030', hat: 'hood', hatCol: '#d8c090', weapon: 'bow' },
+  warden: { skin: SKINS[0], hair: '#e8e0c8', tunic: '#3a5a9a', pants: '#2a3a6a', boots: '#2a2a2a', belt: '#c8c8d8', hat: 'helm', hatCol: '#8a94a8', weapon: 'spear', beard: '#e8e0c8' },
+  forgemaster: { skin: SKINS[3], hair: '#2a1a12', tunic: '#6a3a2a', pants: '#3a2a22', boots: '#2a1a12', belt: '#3a2a22', apron: true, hat: 'cap', hatCol: '#3a2a2a', weapon: 'mace', beard: '#2a1a12' },
+  mummy: { skin: '#d8d0b0', hair: '#d8d0b0', tunic: '#d8d0b0', sleeve: '#cfc8a8', pants: '#cfc8a8', boots: '#bdb690', belt: '#9a926a', hat: 'cap', hatCol: '#d8d0b0', eye: '#ff4a2a' },
+  frostsprite: { skin: '#bfe8ff', hair: '#ffffff', tunic: '#6ab8ff', pants: '#4a98e0', boots: '#e8f8ff', belt: '#ffffff', robe: true, hat: 'none', eye: '#ffffff', weapon: 'wand', blade: '#8affff' },
+  yeti: { skin: '#e8f0ff', hair: '#dfe8f5', tunic: '#dfe8f5', sleeve: '#dfe8f5', pants: '#c8d4e8', boots: '#aab8d0', belt: '#8a98b0', hat: 'none', eye: '#3aafff', ears: true },
+  emberknight: { skin: '#6a2a1a', hair: '#2a1a1a', tunic: '#3a1a1a', pants: '#2a1a1a', boots: '#1a1010', belt: '#ff6a2a', hat: 'horns', hatCol: '#4a2a2a', eye: '#ff8a2a', weapon: 'sword', blade: '#ff6a2a', shield: true, shieldCol: '#2a1a1a', trim: '#ff6a2a' },
   goblin: { skin: '#6fae48', hair: '#4a7a30', tunic: '#7a5a30', pants: '#4a3a22', boots: '#2a1a0a', belt: '#2a1a0a', hat: 'none', weapon: 'dagger', ears: true, eye: '#ff3a3a' },
   ghoul: { skin: '#7a9a7a', hair: '#3a4a3a', tunic: '#4a4a5a', pants: '#2a2a3a', boots: '#2a2a2a', belt: '#2a2a2a', hat: 'none', eye: '#ffe83a', ears: true },
   wraith: { skin: '#a8c4ff', hair: '#a8c4ff', tunic: '#3a4a9a', pants: '#2a3a7a', boots: '#2a3a7a', belt: '#6a8aff', robe: true, hat: 'hood', hatCol: '#2a3a7a', eye: '#8affff', weapon: 'staff', blade: '#8affff' },
@@ -332,33 +339,34 @@ export function npcSprite(key, dir, fr = 0) {
 }
 
 // ------------------------------------------------------------------ monsters
-function slime(fr) {
+function slime(fr, p = {}) {
+  const body = p.body || '#5fd35f', hi = p.hi || '#c8ffc8', mouth = p.mouth || '#2f8a2f', eye = p.eye || '#1a1a2a';
   const g = new Grid(16, 16);
-  if (fr) g.ell(8, 11, 7, 3.6, '#5fd35f'); else g.ell(8, 10, 6, 4.6, '#5fd35f');
+  if (fr) g.ell(8, 11, 7, 3.6, body); else g.ell(8, 10, 6, 4.6, body);
   g.shade();
-  g.set(5, fr ? 9 : 7, '#c8ffc8'); g.set(6, fr ? 9 : 7, '#c8ffc8');
+  g.set(5, fr ? 9 : 7, hi); g.set(6, fr ? 9 : 7, hi);
   const ey = fr ? 10 : 9;
-  g.rect(5, ey, 2, 2, '#fff'); g.rect(9, ey, 2, 2, '#fff'); g.set(6, ey + 1, '#1a1a2a'); g.set(10, ey + 1, '#1a1a2a');
-  g.rect(7, ey + 3, 2, 1, '#2f8a2f');
+  g.rect(5, ey, 2, 2, '#fff'); g.rect(9, ey, 2, 2, '#fff'); g.set(6, ey + 1, eye); g.set(10, ey + 1, eye);
+  g.rect(7, ey + 3, 2, 1, mouth);
   return g.outline().canvas();
 }
-function bat(fr) {
+function bat(fr, p = {}) {
+  const w = p.w || '#5a3f7a', bd = p.body || '#3a2a55', eye = p.eye || '#ff4a4a';
   const g = new Grid(16, 16);
-  const w = '#5a3f7a';
   for (let i = 1; i <= 6; i++) {
     const y = Math.round(8 + (fr ? i * 0.55 : -i * 0.7));
     g.rect(8 - i - 1, y - 1, 1, 3, w); g.rect(8 + i, y - 1, 1, 3, w);
   }
   g.rect(6, 8, 4, 2, w);
-  g.ell(8, 8, 2.2, 3, '#3a2a55'); g.ell(8, 5.5, 2.2, 2, '#3a2a55');
-  g.set(6, 3, '#3a2a55'); g.set(10, 3, '#3a2a55');
+  g.ell(8, 8, 2.2, 3, bd); g.ell(8, 5.5, 2.2, 2, bd);
+  g.set(6, 3, bd); g.set(10, 3, bd);
   g.shade();
-  g.set(7, 5, '#ff4a4a'); g.set(9, 5, '#ff4a4a'); g.set(7, 7, '#fff'); g.set(9, 7, '#fff');
+  g.set(7, 5, eye); g.set(9, 5, eye); g.set(7, 7, '#fff'); g.set(9, 7, '#fff');
   return g.outline().canvas();
 }
-function wolf(fr) {
+function wolf(fr, p = {}) {
+  const c = p.c || '#8a8f99', d = p.d || '#6a6f79', l = p.l || '#c0c4cc', eye = p.eye || '#ffd23a';
   const g = new Grid(16, 16);
-  const c = '#8a8f99', d = '#6a6f79', l = '#c0c4cc';
   g.rect(0, 5, 3, 2, c); g.set(0, 4, c);
   g.ell(7.5, 8.5, 5.6, 3, c);
   g.rect(4, 10, 7, 1, l);
@@ -367,10 +375,12 @@ function wolf(fr) {
   g.rect(13, 7, 3, 2, l);
   g.set(11, 3, d); g.set(11, 4, c); g.set(13, 3, d); g.set(13, 4, c);
   g.shade();
-  g.set(13, 6, '#ffd23a'); g.set(15, 7, '#16121f'); g.set(14, 9, '#fff'); g.set(8, 7, d); g.set(6, 7, d);
+  g.set(13, 6, eye); g.set(15, 7, '#16121f'); g.set(14, 9, '#fff'); g.set(8, 7, d); g.set(6, 7, d);
   return g.outline().canvas();
 }
-function golem(fr) {
+function golem(fr, p = {}) {
+  const tex = p.tex || ['#8a8a92', '#7c7c86', '#9a9aa4', '#6e6e78', '#8a8a92'], eye = p.eye || '#ffb030', rune = p.rune || '#ff8a20';
+  const moss = p.moss === undefined ? '#4f8a3f' : p.moss;
   const g = new Grid(32, 32);
   const up = fr ? 2 : 0;
   g.rect(9, 23, 6, 7, '#7a7a82'); g.rect(17, 23, 6, 7, '#7a7a82');
@@ -378,14 +388,96 @@ function golem(fr) {
   g.rect(2, 9 - up, 6, 6, '#8a8a92'); g.rect(3, 15 - up, 4, 8, '#7a7a82'); g.rect(1, 22 - up, 7, 5, '#8a8a92');
   g.rect(24, 9 - up, 6, 6, '#8a8a92'); g.rect(25, 15 - up, 4, 8, '#7a7a82'); g.rect(24, 22 - up, 7, 5, '#8a8a92');
   g.rect(11, 2, 10, 8, '#9a9aa2');
-  g.tex(['#8a8a92', '#7c7c86', '#9a9aa4', '#6e6e78', '#8a8a92'], 5);
-  for (let i = 0; i < 26; i++) { const x = Math.floor(hash2(i, 1, 9) * 30) + 1, y = Math.floor(hash2(i, 2, 9) * 28) + 1; if (g.get(x, y)) g.set(x, y, '#4f8a3f'); }
+  g.tex(tex, 5);
+  if (moss) for (let i = 0; i < 26; i++) { const x = Math.floor(hash2(i, 1, 9) * 30) + 1, y = Math.floor(hash2(i, 2, 9) * 28) + 1; if (g.get(x, y)) g.set(x, y, moss); }
   g.shade();
-  g.rect(13, 5, 2, 2, '#ffb030'); g.rect(17, 5, 2, 2, '#ffb030'); g.set(13, 5, '#fff2a0'); g.set(17, 5, '#fff2a0');
-  g.rect(15, 12, 2, 7, '#ff8a20'); g.rect(13, 14, 6, 1, '#ff8a20'); g.rect(15, 12, 2, 1, '#fff2a0');
+  g.rect(13, 5, 2, 2, eye); g.rect(17, 5, 2, 2, eye); g.set(13, 5, '#fff2a0'); g.set(17, 5, '#fff2a0');
+  g.rect(15, 12, 2, 7, rune); g.rect(13, 14, 6, 1, rune); g.rect(15, 12, 2, 1, '#fff2a0');
   g.line(20, 11, 23, 16, '#3a3a44'); g.line(10, 18, 8, 22, '#3a3a44');
   return g.outline().canvas();
 }
+function scarab(fr) {
+  const g = new Grid(16, 16), body = '#2a6a6a', gold = '#d8b040';
+  g.ell(8, 9, 4.8, 3.6, body); g.ell(8, 7, 2.6, 2, gold); g.rect(7, 5, 2, 1, gold);
+  for (const x of [3, 5, 10, 12]) g.rect(x, 12 + ((x + fr) % 2), 1, 2, '#1a3a3a');
+  g.set(6, 4, '#1a3a3a'); g.set(10, 4, '#1a3a3a');
+  g.shade();
+  g.set(7, 6, '#fff'); g.set(9, 6, '#fff'); g.line(8, 7, 8, 12, '#14403f');
+  return g.outline().canvas();
+}
+function scorpion(fr) { // faces right
+  const g = new Grid(16, 16), b = '#8a5a2a', d = '#a06a30';
+  g.ell(7, 10, 4.6, 2.8, b); g.ell(11, 10, 2, 2, b);
+  g.rect(13, 7 + fr, 3, 2, d); g.rect(13, 12 - fr, 3, 2, d); g.set(15, 7 + fr, b); g.set(15, 13 - fr, b);
+  for (const [x, y] of [[2, 9], [1, 7], [1, 5], [2, 3], [4, 2], [6, 2], [8, 3]]) g.rect(x, y + (fr ? 0 : 1), 2, 2, b);
+  for (const x of [4, 6, 8, 10]) g.rect(x, 12 + ((x + fr) % 2), 1, 2, '#5a3a18');
+  g.shade();
+  g.set(9, 4 + (fr ? 0 : 1), '#ffd23a'); g.set(12, 9, '#ff4a2a');
+  return g.outline().canvas();
+}
+function viper(fr) { // faces right
+  const g = new Grid(16, 16);
+  for (let i = 0; i < 12; i++) g.rect(2 + i, 9 + Math.round(Math.sin(i / 1.5 + fr * 1.6) * 2), 2, 2, i % 3 ? '#9ab040' : '#7a9030');
+  g.ell(14, 8, 2.2, 1.8, '#9ab040');
+  g.shade();
+  g.set(14, 7, '#ffe040'); g.set(15, 9, '#ff3a3a');
+  return g.outline().canvas();
+}
+function elemental(fr) {
+  const g = new Grid(16, 16);
+  g.ell(8, 10, 5, 5, '#ff6a1a'); g.ell(8, 9, 3.6, 4.2, '#ffa030'); g.ell(8, 9, 2, 2.6, '#ffe060');
+  for (const [x, y] of fr ? [[5, 3], [8, 1], [11, 4]] : [[4, 4], [8, 2], [12, 3]]) { g.rect(x, y, 2, 4, '#ff8a2a'); g.set(x, y, '#ffd040'); }
+  g.set(6, 9, '#7a1a0a'); g.set(10, 9, '#7a1a0a'); g.rect(7, 12, 2, 1, '#7a1a0a');
+  return g.outline('#5a1a0a').canvas();
+}
+function kingMummy(fr) {
+  const g = new Grid(32, 32), wrap = '#d8d0b0', up = fr ? 1 : 0;
+  g.rect(8, 12, 16, 18, wrap); g.rect(6, 22, 20, 8, wrap);
+  g.rect(4, 13 - up, 4, 10, wrap); g.rect(24, 13 - up, 4, 10, wrap);
+  g.rect(11, 3, 10, 9, wrap);
+  g.rect(12, 4, 8, 7, '#e8c040');
+  g.rect(9, 3, 2, 9, '#2a6aff'); g.rect(21, 3, 2, 9, '#2a6aff'); g.rect(10, 2, 12, 2, '#e8c040');
+  g.rect(29, 2, 1, 28, '#6a4a2a'); g.rect(27, 0, 4, 4, '#ffd23a');
+  g.shade();
+  for (let y = 13; y < 30; y += 2) g.rect(9, y, 14, 1, '#b8b090');
+  g.rect(13, 6, 2, 2, '#2a6aff'); g.rect(17, 6, 2, 2, '#2a6aff'); g.rect(15, 9, 2, 1, '#a07020');
+  g.rect(14, 19, 4, 4, '#ffd23a'); g.rect(15, 20, 2, 2, '#fff8c0');
+  if (fr) { g.set(28, 1, '#fff'); g.set(30, 3, '#fff'); }
+  return g.outline().canvas();
+}
+function dragon(fr, p) {
+  const g = new Grid(32, 32), up = fr ? 2 : 0;
+  for (let r = 0; r < 12; r++) { const w = Math.round(10 - r * 0.8); g.rect(9 - w, 4 + r + up, w, 1, p.wing); g.rect(23, 4 + r + up, w, 1, p.wing); }
+  g.ell(16, 19, 7, 9, p.body);
+  g.ell(16, 7, 5.2, 4.2, p.body); g.rect(13, 9, 6, 4, p.body);
+  g.rect(12, 1, 2, 5, p.horn); g.rect(18, 1, 2, 5, p.horn); g.set(11, 1, p.horn); g.set(20, 1, p.horn);
+  g.rect(13, 14, 6, 11, p.belly);
+  g.rect(10, 26, 4, 5, p.body); g.rect(18, 26, 4, 5, p.body); g.rect(22, 27, 7, 2, p.body);
+  g.shade();
+  for (let y = 15; y < 25; y += 2) g.rect(14, y, 4, 1, adj(p.belly, 0.8));
+  g.rect(12, 6, 2, 2, p.eye); g.rect(18, 6, 2, 2, p.eye); g.set(14, 11, '#16121f'); g.set(17, 11, '#16121f');
+  g.rect(14, 12, 4, 1, '#fff');
+  return g.outline().canvas();
+}
+
+const SAND_TEX = ['#c8a868', '#b89858', '#d8b878', '#a88848', '#c8a868'];
+const ICE_TEX = ['#bfe0f0', '#a8d0e8', '#d8f0ff', '#8ab8d8', '#bfe0f0'];
+const OBS_TEX = ['#2a2a3a', '#1a1a28', '#3a3a4a', '#4a2a5a', '#2a2a3a'];
+// every creature: [painter, palette]
+const MOB_ART = {
+  slime: ['slime', {}], frostslime: ['slime', { body: '#8fd8ff', hi: '#e8ffff', mouth: '#4a9ac8' }], magmaslime: ['slime', { body: '#ff6a2a', hi: '#ffe0a0', mouth: '#b02a0a', eye: '#ffe040' }],
+  bat: ['bat', {}], frostowl: ['bat', { w: '#dfe8f5', body: '#aab8d0', eye: '#3aafff' }], imp: ['bat', { w: '#c03a2a', body: '#8a1a1a', eye: '#ffe040' }],
+  wolf: ['wolf', {}], snowwolf: ['wolf', { c: '#e8eef5', d: '#b0bccc', l: '#ffffff', eye: '#3aafff' }], lavahound: ['wolf', { c: '#5a2a2a', d: '#3a1a1a', l: '#ff8a2a', eye: '#ff4a1a' }],
+  golem: ['golem', {}], sandgolem: ['golem', { tex: SAND_TEX, eye: '#ff4a2a', rune: '#ffd23a', moss: null }],
+  icegolem: ['golem', { tex: ICE_TEX, eye: '#3aafff', rune: '#8affff', moss: null }], obsidiangolem: ['golem', { tex: OBS_TEX, eye: '#ff6a1a', rune: '#ff4a1a', moss: null }],
+  scarab: ['scarab', {}], scorpion: ['scorpion', {}], sandviper: ['viper', {}], fireelem: ['elemental', {}], sunking: ['kingmummy', {}], bonelord: ['bonelord', {}],
+  rimefang: ['dragon', { body: '#7ab8e8', belly: '#d8f0ff', wing: '#4a88c8', eye: '#ffffff', horn: '#e8f4ff' }],
+  cinderwing: ['dragon', { body: '#b02a1a', belly: '#ff8a2a', wing: '#6a1a1a', eye: '#ffe040', horn: '#2a1a1a' }],
+};
+const PAINT = { slime, bat, wolf, golem, scarab, scorpion, viper, elemental, kingmummy: kingMummy, dragon, bonelord };
+const HUMANOID_MOB = new Set(['goblin', 'skeleton', 'ghoul', 'wraith', 'mummy', 'frostsprite', 'yeti', 'emberknight']);
+/** creatures drawn facing right that mirror when they face left */
+export const SIDE_MOBS = new Set(['wolf', 'snowwolf', 'lavahound', 'scorpion', 'sandviper']);
 
 function bonelord(fr) {
   const g = new Grid(32, 32);
@@ -408,21 +500,23 @@ function bonelord(fr) {
 
 export function mobSprite(type, dir, fr) {
   const f2 = fr & 1;
-  switch (type) {
-    case 'slime': return memo(`m${type}${f2}`, () => slime(f2));
-    case 'bat': return memo(`m${type}${f2}`, () => bat(f2));
-    case 'wolf': { const flip = dir === 2; return memo(`m${type}${f2}${flip}`, () => { const c = wolf(f2); if (!flip) return c; const n = mkCanvas(16, 16), x = n.getContext('2d'); x.scale(-1, 1); x.drawImage(c, -16, 0); return n; }); }
-    case 'golem': return memo(`m${type}${f2}`, () => golem(f2));
-    case 'bonelord': return memo(`m${type}${f2}`, () => bonelord(f2));
-    case 'ghoul': return memo(`m${type}${dir}${fr}`, () => humanoid({ ...NPC_LOOK.ghoul }, dir, fr));
-    case 'wraith': return memo(`m${type}${dir}${fr}`, () => {
-      const c = humanoid({ ...NPC_LOOK.wraith }, dir, fr), n = mkCanvas(16, 16), x = n.getContext('2d');
+  if (HUMANOID_MOB.has(type)) {
+    return memo(`m${type}${dir}${fr}`, () => {
+      const c = humanoid({ ...NPC_LOOK[type] }, dir, fr);
+      if (type !== 'wraith') return c;
+      const n = mkCanvas(16, 16), x = n.getContext('2d');
       x.globalAlpha = 0.8; x.drawImage(c, 0, 0); return n;
     });
-    case 'goblin': return memo(`m${type}${dir}${fr}`, () => humanoid({ ...NPC_LOOK.goblin }, dir, fr));
-    case 'skeleton': return memo(`m${type}${dir}${fr}`, () => humanoid({ ...NPC_LOOK.skeleton }, dir, fr));
-    default: return memo('m?', () => slime(0));
   }
+  const art = MOB_ART[type] || MOB_ART.slime;
+  const flip = SIDE_MOBS.has(type) && dir === 2;
+  return memo(`m${type}${f2}${flip}`, () => {
+    const c = PAINT[art[0]](f2, art[1]);
+    if (!flip) return c;
+    const n = mkCanvas(c.width, c.height), x = n.getContext('2d');
+    x.scale(-1, 1); x.drawImage(c, -c.width, 0);
+    return n;
+  });
 }
 
 // ------------------------------------------------------------------ item icons

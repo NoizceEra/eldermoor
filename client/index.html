@@ -50,7 +50,8 @@
     <div id="tFx" class="fxrow"></div>
   </div>
   <div id="side">
-    <canvas id="minimap" width="64" height="64" class="panel"></canvas>
+    <canvas id="minimap" width="64" height="64" class="panel" title="Click or press N for the world map"></canvas>
+    <div id="regionName" class="small"></div>
     <div id="quest" class="panel small"></div>
   </div>
   <div id="skillbar"></div>
@@ -78,6 +79,8 @@
   </div>
   <div id="death" class="hidden"><div>YOU DIED</div><small>Returning to town...</small></div>
   <div id="banner" class="hidden"></div>
+  <div id="region"></div>
+  <div id="worldmap" class="panel hidden"><div class="row"><b>World map</b><button class="x" data-close="worldmap">x</button></div><canvas id="wmCanvas" width="512" height="512"></canvas></div>
   <div id="toast"></div>
 </div>
 <div id="dc" class="hidden"><div class="panel"><b>Disconnected</b><p id="dcWhy"></p><button onclick="location.reload()">RECONNECT</button></div></div>

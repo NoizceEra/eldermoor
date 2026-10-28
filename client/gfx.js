@@ -180,8 +180,107 @@ const treeCache = new Map();
 export function treeSprite(kind, v) {
   const k = `${kind}${v}`;
   let c = treeCache.get(k);
-  if (!c) { c = kind === 'pillar' ? pillarSprite(v) : kind === O.DTREE ? deadTree(v) : kind === 'pine' ? pineTree(v) : oakTree(v); treeCache.set(k, c); }
+  if (!c) { c = kind === 'cactus' ? cactusSprite(v) : kind === 'snowpine' ? snowPineSprite(v) : kind === 'palm' ? palmSprite(v) : kind === 'pillar' ? pillarSprite(v) : kind === O.DTREE ? deadTree(v) : kind === 'pine' ? pineTree(v) : oakTree(v); treeCache.set(k, c); }
   return c;
+}
+
+// ---- phase 3 terrain: snow, ice, dunes, basalt, ash, lava, bridges
+function snowTile(v) {
+  const g = new Grid(TS, TS);
+  speckle(g, '#eef3fa', ['#dfe8f4', '#ffffff'], [0.14, 0.1], 600 + v);
+  if (hash2(v, 3, 601) < 0.4) { const x = 2 + Math.floor(hash2(v, 4, 601) * 11), y = 3 + Math.floor(hash2(v, 5, 601) * 10); g.set(x, y, '#c6d4e8'); g.set(x + 1, y, '#c6d4e8'); }
+  return g.canvas();
+}
+function iceTile(v) {
+  const g = new Grid(TS, TS);
+  speckle(g, '#a8d8ee', ['#98c8e0', '#c0e8f8'], [0.16, 0.1], 610 + v);
+  const x0 = 2 + Math.floor(hash2(v, 1, 611) * 8), y0 = 2 + Math.floor(hash2(v, 2, 611) * 8);
+  g.line(x0, y0, x0 + 5, y0 + 3, '#e8f8ff'); g.line(x0 + 5, y0 + 3, x0 + 4, y0 + 8, '#78b0d0');
+  return g.canvas();
+}
+function duneTile(v) {
+  const g = new Grid(TS, TS);
+  speckle(g, '#e0b86a', ['#d0a85a', '#ecc884'], [0.16, 0.1], 620 + v);
+  const y = 4 + Math.floor(hash2(v, 1, 621) * 8);
+  for (let x = 1; x < 15; x++) g.set(x, y + Math.round(Math.sin(x / 2 + v)), '#c89c50');
+  return g.canvas();
+}
+function basaltTile(v) {
+  const g = new Grid(TS, TS);
+  speckle(g, '#3a3440', ['#2e2a36', '#4a4452'], [0.18, 0.12], 630 + v);
+  if (hash2(v, 3, 631) < 0.25) { const x = 2 + Math.floor(hash2(v, 4, 631) * 11), y = 2 + Math.floor(hash2(v, 5, 631) * 11); g.set(x, y, '#ff6a2a'); g.set(x + 1, y, '#c8381a'); }
+  return g.canvas();
+}
+function ashTile(v) {
+  const g = new Grid(TS, TS);
+  speckle(g, '#58545c', ['#4a464e', '#6a6670', '#3a363e'], [0.14, 0.12, 0.04], 640 + v);
+  return g.canvas();
+}
+function lavaTile(frame) {
+  const g = new Grid(TS, TS);
+  g.rect(0, 0, TS, TS, '#d8381a');
+  for (let row = 0; row < 4; row++) {
+    const y = row * 4 + 1, ox = (frame * 3 + row * 5) % 16;
+    for (let i = 0; i < 6; i++) g.set((ox + i) % 16, y, '#ff8a2a');
+    g.set((ox + 8) % 16, y + 2, '#ffd040'); g.set((ox + 9) % 16, y + 2, '#ffd040');
+  }
+  for (let i = 0; i < 5; i++) { const x = Math.floor(hash2(i, frame >> 1, 650) * 16), y = Math.floor(hash2(i, 9, 651) * 16); g.set(x, y, '#7a1a0a'); g.set((x + 1) % 16, y, '#7a1a0a'); }
+  return g.canvas();
+}
+function bridgeTile(v) {
+  const g = new Grid(TS, TS);
+  g.rect(0, 0, TS, TS, '#8a5a2a');
+  for (let y = 0; y < TS; y += 4) {
+    g.rect(0, y + 3, TS, 1, '#4a2f18'); g.rect(0, y, TS, 1, '#a07038');
+    for (let x = Math.floor(hash2(y, v, 660) * 8); x < TS; x += 8) g.set(x, y + 1, '#4a2f18');
+  }
+  g.rect(0, 0, 1, TS, '#3a2410'); g.rect(15, 0, 1, TS, '#3a2410');
+  return g.canvas();
+}
+function iceRockTile(v) {
+  const g = new Grid(TS, TS);
+  g.ell(8, 10, 5.5 + (v & 1), 4, '#a8d0e8'); g.ell(7, 8, 3, 2, '#e8f8ff');
+  g.tex(['#a8d0e8', '#98c0d8', '#c0e0f4'], v + 1);
+  g.shade(); g.set(6, 7, '#ffffff');
+  return g.outline('#2a4a68').canvas();
+}
+function brockTile(v) {
+  const g = new Grid(TS, TS);
+  g.ell(8, 10, 5.5 + (v & 1), 4, '#3a3440');
+  g.tex(['#3a3440', '#2e2a36', '#4a4452'], v + 2);
+  g.shade(); g.set(6, 9, '#ff6a2a'); g.set(7, 10, '#ff6a2a'); g.set(9, 11, '#c8381a');
+  return g.outline('#14101c').canvas();
+}
+function cactusSprite(v) {
+  const g = new Grid(24, 32), c = '#3f8a3f';
+  g.rect(10, 8, 4, 22, c); g.rect(5, 15, 6, 3, c); g.rect(5, 10, 3, 6, c); g.rect(13, 18, 6, 3, c); g.rect(16, 12, 3, 7, c); g.ell(12, 8, 2.2, 2.2, c);
+  g.tex([c, adj(c, 0.88), adj(c, 1.12)], v + 4); g.shade();
+  for (const [x, y] of [[11, 12], [12, 20], [6, 12], [17, 15]]) g.set(x, y, '#e8f0c0');
+  if (v % 2 === 0) { g.set(12, 5, '#ff7aa8'); g.set(11, 6, '#ff7aa8'); g.set(13, 6, '#ff7aa8'); }
+  return g.outline('#14240f').canvas();
+}
+function snowPineSprite(v) {
+  const g = new Grid(24, 32);
+  g.rect(11, 24, 3, 6, '#5a3a1c');
+  const gr = '#1f5a46', layers = [[3, 7, 5], [9, 10, 7], [15, 12, 9], [21, 14, 10]];
+  for (const [y, hw, h] of layers) for (let j = 0; j < h; j++) { const w = Math.round((hw * (j + 1)) / h); g.rect(12 - w, y + j - 2, w * 2, 1, gr); }
+  g.tex([gr, adj(gr, 0.88), adj(gr, 1.1)], v + 3);
+  for (const [y, hw, h] of layers) for (let j = 0; j < 2; j++) { const w = Math.round((hw * (j + 1)) / h); g.rect(12 - w, y + j - 2, w * 2, 1, '#f4f8ff'); }
+  g.shade();
+  return g.outline('#0f2a28').canvas();
+}
+function palmSprite(v) {
+  const g = new Grid(24, 32), t = '#8a6a3a';
+  for (let i = 0; i < 20; i++) { g.set(11 + Math.round(Math.sin(i / 6) * 2), 29 - i, t); g.set(12 + Math.round(Math.sin(i / 6) * 2), 29 - i, adj(t, 0.8)); }
+  const top = [13, 9];
+  for (const a of [-2.6, -2.0, -1.3, -0.5, 0.2, 0.8]) {
+    for (let k = 1; k <= 9; k++) {
+      const x = top[0] + Math.cos(a) * k, y = top[1] + Math.sin(a) * k * 0.6 + k * k * 0.03;
+      g.set(x, y, k < 5 ? '#4aaa4a' : '#3a8a3a'); g.set(x, y + 1, '#2f7a2f');
+    }
+  }
+  g.set(12, 10, '#6a4a1a'); g.set(14, 10, '#6a4a1a');
+  return g.outline('#14240f').canvas();
 }
 
 function paintHouse(w, h, v) {
@@ -209,11 +308,16 @@ function paintHouse(w, h, v) {
   return c;
 }
 
-// ---- bake
+// ---- bake (in 32x32-tile chunks, on demand: a 256x256 world would be a 64 MB canvas)
 const GROUND_BASE = {
   [G.GRASS]: '#4c9a3a', [G.FOREST]: '#2f6b34', [G.SWAMP]: '#3d5a4a', [G.SAND]: '#dcc58a', [G.PATH]: '#a0794a', [G.FLOOR]: '#8a8a96', [G.RUIN]: '#6f7b6a',
+  [G.SNOW]: '#eef3fa', [G.ICE]: '#a8d8ee', [G.DUNE]: '#e0b86a', [G.BASALT]: '#3a3440', [G.ASH]: '#58545c',
 };
 const isWater = (t) => t === G.WATER || t === G.DEEP;
+const isLiquid = (t) => isWater(t) || t === G.LAVA;
+const NOBLEND = new Set([G.FLOOR, G.RUIN, G.CRYPT, G.VOID, G.BRIDGE]);
+export const CHUNK = 32;
+const CHUNK_PX = CHUNK * TS;
 
 export function buildWorldArt(world) {
   const N = 8;
@@ -223,6 +327,12 @@ export function buildWorldArt(world) {
     [G.SWAMP]: Array.from({ length: N }, (_, i) => swampTile(i)),
     [G.SAND]: Array.from({ length: N }, (_, i) => sandTile(i)),
     [G.PATH]: Array.from({ length: N }, (_, i) => pathTile(i)),
+    [G.SNOW]: Array.from({ length: N }, (_, i) => snowTile(i)),
+    [G.ICE]: Array.from({ length: N }, (_, i) => iceTile(i)),
+    [G.DUNE]: Array.from({ length: N }, (_, i) => duneTile(i)),
+    [G.BASALT]: Array.from({ length: N }, (_, i) => basaltTile(i)),
+    [G.ASH]: Array.from({ length: N }, (_, i) => ashTile(i)),
+    [G.BRIDGE]: Array.from({ length: 4 }, (_, i) => bridgeTile(i)),
     [G.FLOOR]: Array.from({ length: 4 }, (_, i) => floorTile(i, false)),
     [G.RUIN]: Array.from({ length: 4 }, (_, i) => floorTile(i, true)),
     [G.CRYPT]: Array.from({ length: 4 }, (_, i) => floorTile(i, 2)),
@@ -231,41 +341,79 @@ export function buildWorldArt(world) {
   const walls = Array.from({ length: 3 }, (_, i) => wallTile(i, !!world.dungeon));
   const rwalls = Array.from({ length: 6 }, (_, i) => ruinWallTile(i));
   const rocks = Array.from({ length: 4 }, (_, i) => rockTile(i));
-  const baked = mkCanvas(W * TS, H * TS), bx = baked.getContext('2d');
+  const irocks = Array.from({ length: 4 }, (_, i) => iceRockTile(i));
+  const brocks = Array.from({ length: 4 }, (_, i) => brockTile(i));
+  const waterFrames = [0, 1, 2, 3].map((f) => [waterTile(f, false), waterTile(f, true)]);
+  const lavaFrames = [0, 1, 2, 3].map((f) => lavaTile(f));
   const gAt = (x, y) => (x < 0 || y < 0 || x >= W || y >= H ? G.DEEP : world.g[y * W + x]);
-  const trees = Array.from({ length: H }, () => []);
 
+  // tall objects are y-sorted with characters, so they are collected up front
+  const trees = Array.from({ length: H }, () => []);
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
-      const t = world.g[y * W + x];
-      const v = Math.floor(hash2(x, y, 9) * 8);
-      if (isWater(t)) { bx.drawImage(waterTile(0, t === G.DEEP), x * TS, y * TS); continue; }
-      let under = t;
-      bx.drawImage(V[under][v % V[under].length], x * TS, y * TS);
-      // dithered blend into different neighbouring ground
-      for (const [dx, dy, side] of [[0, -1, 0], [0, 1, 1], [-1, 0, 2], [1, 0, 3]]) {
-        const nt = gAt(x + dx, y + dy);
-        if (nt === t || isWater(nt) || nt === G.FLOOR || t === G.FLOOR || nt === G.RUIN || t === G.RUIN || nt === G.CRYPT || t === G.CRYPT || nt === G.VOID || t === G.VOID) continue;
-        const col = GROUND_BASE[nt];
-        if (!col) continue;
-        bx.fillStyle = col;
-        for (let i = 0; i < TS; i++) {
-          const r1 = hash2(x * 16 + i, y * 16 + side, 77), r2 = hash2(x * 16 + i, y * 16 + side, 78);
-          const d1 = [[i, 0], [i, 15], [0, i], [15, i]][side], d2 = [[i, 1], [i, 14], [1, i], [14, i]][side];
-          if (r1 < 0.6) bx.fillRect(x * TS + d1[0], y * TS + d1[1], 1, 1);
-          if (r2 < 0.25) bx.fillRect(x * TS + d2[0], y * TS + d2[1], 1, 1);
-        }
-      }
       const o = world.o[y * W + x];
-      if (o === O.WALL) bx.drawImage(walls[v % 3], x * TS, y * TS);
-      else if (o === O.RWALL) bx.drawImage(rwalls[v % 6], x * TS, y * TS);
-      else if (o === O.ROCK) bx.drawImage(rocks[v % 4], x * TS, y * TS);
-      else if (o === O.TREE) trees[y].push({ x, kind: t === G.FOREST ? 'pine' : 'oak', v });
+      if (!o) continue;
+      const v = Math.floor(hash2(x, y, 9) * 8);
+      if (o === O.TREE) trees[y].push({ x, kind: world.g[y * W + x] === G.FOREST ? 'pine' : 'oak', v });
       else if (o === O.DTREE) trees[y].push({ x, kind: O.DTREE, v });
       else if (o === O.PILLAR) trees[y].push({ x, kind: 'pillar', v });
+      else if (o === O.CACTUS) trees[y].push({ x, kind: 'cactus', v });
+      else if (o === O.SNOWPINE) trees[y].push({ x, kind: 'snowpine', v });
+      else if (o === O.PALM) trees[y].push({ x, kind: 'palm', v });
     }
   }
-  world.houses.forEach((h, i) => bx.drawImage(paintHouse(h.w, h.h, i), h.x * TS, h.y * TS));
+  const houseArt = world.houses.map((h, i) => paintHouse(h.w, h.h, i));
+
+  function bakeChunk(cx, cy) {
+    const c = mkCanvas(CHUNK_PX, CHUNK_PX), bx = c.getContext('2d');
+    const ox = cx * CHUNK_PX, oy = cy * CHUNK_PX;
+    for (let y = cy * CHUNK; y < Math.min(H, (cy + 1) * CHUNK); y++) {
+      for (let x = cx * CHUNK; x < Math.min(W, (cx + 1) * CHUNK); x++) {
+        const t = world.g[y * W + x];
+        const v = Math.floor(hash2(x, y, 9) * 8);
+        const px = x * TS - ox, py = y * TS - oy;
+        if (isWater(t)) { bx.drawImage(waterFrames[0][t === G.DEEP ? 1 : 0], px, py); continue; }
+        if (t === G.LAVA) { bx.drawImage(lavaFrames[0], px, py); continue; }
+        bx.drawImage(V[t][v % V[t].length], px, py);
+        // dithered blend into a different neighbouring ground
+        if (!NOBLEND.has(t)) {
+          for (const [dx, dy, side] of [[0, -1, 0], [0, 1, 1], [-1, 0, 2], [1, 0, 3]]) {
+            const nt = gAt(x + dx, y + dy);
+            if (nt === t || isLiquid(nt) || NOBLEND.has(nt)) continue;
+            const col = GROUND_BASE[nt];
+            if (!col) continue;
+            bx.fillStyle = col;
+            for (let i = 0; i < TS; i++) {
+              const r1 = hash2(x * 16 + i, y * 16 + side, 77), r2 = hash2(x * 16 + i, y * 16 + side, 78);
+              const d1 = [[i, 0], [i, 15], [0, i], [15, i]][side], d2 = [[i, 1], [i, 14], [1, i], [14, i]][side];
+              if (r1 < 0.6) bx.fillRect(px + d1[0], py + d1[1], 1, 1);
+              if (r2 < 0.25) bx.fillRect(px + d2[0], py + d2[1], 1, 1);
+            }
+          }
+        }
+        const o = world.o[y * W + x];
+        if (o === O.WALL) bx.drawImage(walls[v % 3], px, py);
+        else if (o === O.RWALL) bx.drawImage(rwalls[v % 6], px, py);
+        else if (o === O.ROCK) bx.drawImage(rocks[v % 4], px, py);
+        else if (o === O.ICEROCK) bx.drawImage(irocks[v % 4], px, py);
+        else if (o === O.BROCK) bx.drawImage(brocks[v % 4], px, py);
+      }
+    }
+    world.houses.forEach((h, i) => {
+      if (h.x * TS < ox + CHUNK_PX && (h.x + h.w) * TS > ox && h.y * TS < oy + CHUNK_PX && (h.y + h.h) * TS > oy) bx.drawImage(houseArt[i], h.x * TS - ox, h.y * TS - oy);
+    });
+    return c;
+  }
+  const chunks = new Map(); // LRU: a handful of chunks are visible at once
+  const chunk = (cx, cy) => {
+    const key = cy * 64 + cx;
+    let c = chunks.get(key);
+    if (c) { chunks.delete(key); chunks.set(key, c); return c; }
+    c = bakeChunk(cx, cy);
+    chunks.set(key, c);
+    if (chunks.size > 24) chunks.delete(chunks.keys().next().value);
+    return c;
+  };
 
   // water tiles that touch land get foam; remember them for the animated pass
   const shore = new Uint8Array(W * H);
@@ -273,32 +421,35 @@ export function buildWorldArt(world) {
     for (let x = 0; x < W; x++) {
       if (!isWater(world.g[y * W + x])) continue;
       let m = 0;
-      if (!isWater(gAt(x, y - 1))) m |= 1;
-      if (!isWater(gAt(x, y + 1))) m |= 2;
-      if (!isWater(gAt(x - 1, y))) m |= 4;
-      if (!isWater(gAt(x + 1, y))) m |= 8;
+      if (!isLiquid(gAt(x, y - 1))) m |= 1;
+      if (!isLiquid(gAt(x, y + 1))) m |= 2;
+      if (!isLiquid(gAt(x - 1, y))) m |= 4;
+      if (!isLiquid(gAt(x + 1, y))) m |= 8;
       shore[y * W + x] = m;
     }
   }
 
   // minimap base
   const mm = mkCanvas(W, H), mx = mm.getContext('2d');
-  const MC = { [G.GRASS]: '#4c9a3a', [G.FOREST]: '#2f6b34', [G.SWAMP]: '#3d5a4a', [G.SAND]: '#dcc58a', [G.WATER]: '#2f6fb8', [G.DEEP]: '#1f4a8c', [G.PATH]: '#a0794a', [G.FLOOR]: '#9a9aa8', [G.RUIN]: '#6f7b6a', [G.CRYPT]: '#4a4e66', [G.VOID]: '#0a0814' };
+  const MC = {
+    [G.GRASS]: '#4c9a3a', [G.FOREST]: '#2f6b34', [G.SWAMP]: '#3d5a4a', [G.SAND]: '#dcc58a', [G.WATER]: '#2f6fb8', [G.DEEP]: '#1f4a8c', [G.PATH]: '#a0794a',
+    [G.FLOOR]: '#9a9aa8', [G.RUIN]: '#6f7b6a', [G.CRYPT]: '#4a4e66', [G.VOID]: '#0a0814', [G.SNOW]: '#eef3fa', [G.ICE]: '#a8d8ee', [G.DUNE]: '#e0b86a',
+    [G.BASALT]: '#3a3440', [G.ASH]: '#58545c', [G.LAVA]: '#e0481a', [G.BRIDGE]: '#8a5a2a',
+  };
+  const OC = { [O.WALL]: '#5a5a6a', [O.HOUSE]: '#5a5a6a', [O.TREE]: '#1f5a2a', [O.DTREE]: '#3a3a30', [O.RWALL]: '#555', [O.PILLAR]: '#8a8eaa', [O.CACTUS]: '#2f7a2f', [O.SNOWPINE]: '#2a6a56', [O.PALM]: '#3a8a3a', [O.ICEROCK]: '#8ab8d8', [O.BROCK]: '#2a2630' };
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
-      const o = world.o[y * W + x];
-      mx.fillStyle = o === O.WALL || o === O.HOUSE ? '#5a5a6a' : o === O.TREE ? '#1f5a2a' : o === O.DTREE ? '#3a3a30' : o === O.RWALL ? '#555' : o === O.PILLAR ? '#8a8eaa' : MC[world.g[y * W + x]];
+      mx.fillStyle = OC[world.o[y * W + x]] || MC[world.g[y * W + x]];
       mx.fillRect(x, y, 1, 1);
     }
   }
-
-  const waterFrames = [0, 1, 2, 3].map((f) => [waterTile(f, false), waterTile(f, true)]);
-  return { baked, trees, shore, waterFrames, minimap: mm };
+  return { chunk, trees, shore, waterFrames, lavaFrames, minimap: mm };
 }
 
 export function drawWaterTile(ctx, art, world, tx, ty, px, py, frame) {
   const i = ty * W + tx;
   ctx.drawImage(art.waterFrames[frame][world.g[i] === G.DEEP ? 1 : 0], px, py);
   const m = art.shore[i];
-  if (m) for (let s = 0; s < 4; s++) if (m & (1 << s)) ctx.drawImage(foamStrips[s], px, py);
+  if (m) for (let s2 = 0; s2 < 4; s2++) if (m & (1 << s2)) ctx.drawImage(foamStrips[s2], px, py);
 }
+export function drawLavaTile(ctx, art, px, py, frame) { ctx.drawImage(art.lavaFrames[frame], px, py); }

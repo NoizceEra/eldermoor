@@ -1,10 +1,10 @@
 // Eldermoor client: rendering, input, networking and UI.
-import { W, H, G, O, TOWN, generateWorld, generateDungeon, isSolid, inTown } from '/shared/world.js';
+import { W, H, G, O, TOWN, TOWNS, BOSSES, generateWorld, generateDungeon, isSolid, inTown, regionAt } from '/shared/world.js';
 import { SEED, MOBS, QUESTS, RARITY, NPCS } from '/shared/data.js';
 import { JOBS, JOB_ORDER, SKILLS, ATTRS, ATTR_INFO, EFFECTS, skillsOfJob } from '/shared/jobs.js';
 import { EQ_KEYS, EQ_LABEL, LOOK_LIMITS, LOOK_LABELS, LOOK_COST, SKIN_TONES, HAIR_STYLES, HAIR_COLORS, EYE_COLORS, STARTER_KIT, defaultLook, visTokens } from '/shared/gear.js';
 import * as SP from '/client/sprites.js';
-import { TS, buildWorldArt, drawWaterTile, treeSprite } from '/client/gfx.js';
+import { TS, CHUNK, buildWorldArt, drawWaterTile, drawLavaTile, treeSprite } from '/client/gfx.js';
 
 const $ = (id) => document.getElementById(id);
 const worldOver = generateWorld(SEED);
@@ -12,8 +12,10 @@ const artOver = buildWorldArt(worldOver);
 let world = worldOver, art = artOver; // swapped when the server moves us into a dungeon instance
 let zoneKind = 'world', zoneId = 'world';
 const dungeonCache = new Map(); // seed -> { world, art }
-const BIG = new Set(['golem', 'bonelord']);
-const HUMANOID = new Set(['goblin', 'skeleton', 'ghoul', 'wraith']);
+const BIG = new Set(['golem', 'bonelord', 'sandgolem', 'icegolem', 'obsidiangolem', 'sunking', 'rimefang', 'cinderwing']);
+const HUMANOID = new Set(['goblin', 'skeleton', 'ghoul', 'wraith', 'mummy', 'frostsprite', 'yeti', 'emberknight']);
+const FLYERS = new Set(['bat', 'frostowl', 'imp']);
+const SLIMES = new Set(['slime', 'frostslime', 'magmaslime']);
 
 // ------------------------------------------------------------------ canvas setup
 const screen = $('screen'), sctx = screen.getContext('2d');
@@ -397,6 +399,7 @@ addEventListener('keydown', (e) => {
   if (k === 'enter') { $('chatIn').focus(); e.preventDefault(); }
   else if (k.length === 1 && k >= '1' && k <= '6') tx({ t: 'skill', n: Number(k) });
   else if (k === 'c') toggleChar();
+  else if (k === 'n' && !pendingInvite) toggleMap();
   else if (k === 'j') toggleChar('jobs');
   else if (k === 'k') toggleChar('skills');
   else if (k === 'q') quaff();
@@ -405,7 +408,7 @@ addEventListener('keydown', (e) => {
   else if (k === 'm') { muted = !muted; localStorage.setItem('em_mute', muted ? '1' : '0'); toast(muted ? 'Sound off' : 'Sound on'); }
   else if (k === 'tab' || k === ' ') cycleTarget();
   else if ((k === 'y' || k === 'n') && pendingInvite && !pendingInvite.menu) answerInvite(k === 'y');
-  else if (k === 'escape') { if (pendingInvite && pendingInvite.menu) { pendingInvite = null; showInvite(); } if (tradeView) tx({ t: 'trade_cancel' }); closeDialog(); $('inv').classList.add('hidden'); tx({ t: 'target', id: 0 }); goal = null; }
+  else if (k === 'escape') { $('worldmap').classList.add('hidden'); if (pendingInvite && pendingInvite.menu) { pendingInvite = null; showInvite(); } if (tradeView) tx({ t: 'trade_cancel' }); closeDialog(); $('inv').classList.add('hidden'); tx({ t: 'target', id: 0 }); goal = null; }
 });
 addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
 addEventListener('blur', () => keys.clear());
@@ -527,6 +530,43 @@ function renderParty() {
     const lv = document.createElement('button'); lv.textContent = 'Leave party'; lv.style.fontSize = '7px'; lv.onclick = () => tx({ t: 'pleave' }); el.appendChild(lv);
   }
 }
+
+// ---- regions and the world map
+let curRegion = '';
+function trackRegion() {
+  const m = meEnt();
+  if (!m) return;
+  let label;
+  if (zoneKind === 'dungeon') label = 'The Sunken Crypt';
+  else {
+    const r = regionAt(m.x, m.y);
+    label = r.town ? `${r.name} (safe)` : r.sea ? 'Open sea' : `${r.name}  Lv ${r.lv}`;
+    if (label !== curRegion && !r.sea) {
+      const el = $('region'); el.textContent = r.town ? r.name : `${r.name}  (Lv ${r.lv})`; el.classList.add('show');
+      clearTimeout(trackRegion.t); trackRegion.t = setTimeout(() => el.classList.remove('show'), 3200);
+    }
+  }
+  if (label !== curRegion) { curRegion = label; $('regionName').textContent = label; }
+}
+function drawWorldMap() {
+  const m = meEnt(), x = $('wmCanvas').getContext('2d');
+  x.imageSmoothingEnabled = false;
+  x.drawImage(art.minimap, 0, 0, W, H, 0, 0, 512, 512);
+  x.textAlign = 'center'; x.font = '9px "Press Start 2P", monospace'; x.lineWidth = 3; x.strokeStyle = '#0d0a18';
+  if (zoneKind === 'world') {
+    for (const t of TOWNS) { x.strokeText(t.name, t.cx * 2, t.cy * 2 - 8); x.fillStyle = '#ffe066'; x.fillText(t.name, t.cx * 2, t.cy * 2 - 8); x.fillRect(t.cx * 2 - 3, t.cy * 2 - 3, 6, 6); }
+    x.fillStyle = '#ff5a3a';
+    for (const b of BOSSES) { x.fillRect(b.x * 2 - 3, b.y * 2 - 3, 7, 7); x.fillStyle = '#0d0a18'; x.fillRect(b.x * 2 - 1, b.y * 2 - 1, 3, 3); x.fillStyle = '#ff5a3a'; }
+  }
+  for (const [id, d] of pmData) { if (id === myId || (d.z && d.z !== zoneId)) continue; x.fillStyle = '#6aff8a'; x.fillRect(d.x * 2 - 3, d.y * 2 - 3, 7, 7); }
+  if (m) { x.fillStyle = Math.floor(now() / 400) % 2 ? '#ffffff' : '#8be88b'; x.fillRect(m.x * 2 - 4, m.y * 2 - 4, 9, 9); x.strokeStyle = '#0d0a18'; x.lineWidth = 1; x.strokeRect(m.x * 2 - 4, m.y * 2 - 4, 9, 9); }
+}
+function toggleMap() {
+  const box = $('worldmap');
+  box.classList.toggle('hidden');
+  if (!box.classList.contains('hidden')) drawWorldMap();
+}
+$('minimap').addEventListener('click', toggleMap);
 
 function cycleTarget() {
   const m = meEnt(); if (!m) return;
@@ -736,9 +776,10 @@ function renderQuest() {
   const q = me.quest, el = $('quest');
   if (q.i >= QUESTS.length) { el.innerHTML = '<b>All quests complete</b>'; return; }
   const Q = QUESTS[q.i];
-  if (q.s === 0) el.innerHTML = `<b>!</b> ${esc(Q.title)}<br>Talk to Elder Mira`;
+  const gname = esc((NPCS.find((n) => n.id === Q.giver) || { name: 'the quest giver' }).name);
+  if (q.s === 0) el.innerHTML = `<b>!</b> ${esc(Q.title)}<br>Talk to ${gname}`;
   else if (q.s === 1) el.innerHTML = `<b>${esc(Q.title)}</b><br>Slay ${esc(MOBS[Q.mob].name)}: ${q.p}/${Q.need}`;
-  else el.innerHTML = `<b>?</b> ${esc(Q.title)}<br>Return to Elder Mira`;
+  else el.innerHTML = `<b>?</b> ${esc(Q.title)}<br>Return to ${gname}`;
 }
 
 function itemTip(it) {
@@ -892,16 +933,16 @@ function drawEntity(o, t, tgId) {
     const fr = o.moving ? [1, 0, 3, 0][Math.floor(t / 110) % 4] : 0;
     spr = SP.heroSprite(o.lk, o.vs, o.f, fr);
   } else {
-    const fr = o.s === 'bat' ? Math.floor(t / 110) % 2 : o.s === 'slime' ? Math.floor(t / 320) % 2 : o.moving ? Math.floor(t / 160) % 2 : BIG.has(o.s) ? Math.floor(t / 600) % 2 : 0;
+    const fr = FLYERS.has(o.s) ? Math.floor(t / 110) % 2 : SLIMES.has(o.s) ? Math.floor(t / 320) % 2 : o.moving ? Math.floor(t / 160) % 2 : BIG.has(o.s) ? Math.floor(t / 600) % 2 : 0;
     spr = SP.mobSprite(o.s, o.f, HUMANOID.has(o.s) ? (o.moving ? [1, 0, 3, 0][Math.floor(t / 130) % 4] : 0) : fr);
-    if (o.s === 'wolf') spr = SP.mobSprite('wolf', o.f === 2 ? 2 : 3, fr);
-    if (o.s === 'bat') oy = -4 + Math.round(Math.sin(t / 180 + o.i) * 2);
+    if (SP.SIDE_MOBS.has(o.s)) spr = SP.mobSprite(o.s, o.f === 2 ? 2 : 3, fr);
+    if (FLYERS.has(o.s)) oy = -4 + Math.round(Math.sin(t / 180 + o.i) * 2);
   }
   w = spr.width;
   const baseX = o.rx * TS + 8 - w / 2 + lx0, baseY = o.ry * TS + 16 - spr.height + ly0 + oy;
   const px = Math.round(baseX - camX), py = Math.round(baseY - camY);
   if (px < -40 || py < -40 || px > VW + 40 || py > VH + 40) return;
-  shadow(px + w / 2, py + spr.height - (o.s === 'bat' ? 0 : 3) - oy * (o.s === 'bat' ? -1 : 0) + (o.s === 'bat' ? 0 : 0), BIG.has(o.s) ? 22 : o.s === 'bat' ? 6 : 10);
+  shadow(px + w / 2, py + spr.height - (FLYERS.has(o.s) ? 0 : 3) - oy * (FLYERS.has(o.s) ? -1 : 0) + (FLYERS.has(o.s) ? 0 : 0), BIG.has(o.s) ? 22 : FLYERS.has(o.s) ? 6 : 10);
   if (o.id === undefined && o.i === tgId) {
     const pulse = Math.floor(t / 250) % 2;
     wx.fillStyle = '#ff4a4a';
@@ -1115,7 +1156,7 @@ function drawNpc(n, t) {
   wx.drawImage(spr, px, py);
   labels.push({ x: px + 8, y: py - 2, txt: n.name, col: '#ffe066' });
   if (n.role === 'quest' && me) {
-    const q = me.quest; const mark = q.i >= QUESTS.length ? '' : q.s === 0 ? '!' : q.s === 2 ? '?' : '';
+    const q = me.quest; const mark = q.i >= QUESTS.length || QUESTS[q.i].giver !== n.id ? '' : q.s === 0 ? '!' : q.s === 2 ? '?' : '';
     if (mark) labels.push({ x: px + 8, y: py - 12 - Math.round(Math.sin(t / 200) * 2), txt: mark, col: mark === '!' ? '#ffe066' : '#6aff8a', mark: true });
   }
 }
@@ -1132,10 +1173,14 @@ function render(t, dt) {
   camY = Math.max(0, Math.min(H * TS - VH, Math.round(cy - VH / 2))) + sy;
   camX = Math.max(0, Math.min(W * TS - VW, camX)); camY = Math.max(0, Math.min(H * TS - VH, camY));
 
-  wx.drawImage(art.baked, camX, camY, VW, VH, 0, 0, VW, VH);
+  { const CP = CHUNK * TS; // draw only the baked chunks the camera overlaps
+    for (let cy = Math.floor(camY / CP); cy <= Math.floor((camY + VH - 1) / CP); cy++) for (let cx = Math.floor(camX / CP); cx <= Math.floor((camX + VW - 1) / CP); cx++) {
+      if (cx < 0 || cy < 0 || cx * CHUNK >= W || cy * CHUNK >= H) continue;
+      wx.drawImage(art.chunk(cx, cy), cx * CP - camX, cy * CP - camY);
+    } }
   const tx0 = Math.floor(camX / TS), ty0 = Math.floor(camY / TS), tx1 = Math.min(W - 1, tx0 + Math.ceil(VW / TS) + 1), ty1 = Math.min(H - 1, ty0 + Math.ceil(VH / TS) + 1);
   const wf = Math.floor(t / 420) % 4;
-  for (let y = ty0; y <= ty1; y++) for (let x = tx0; x <= tx1; x++) { const g = world.g[y * W + x]; if (g === G.WATER || g === G.DEEP) drawWaterTile(wx, art, world, x, y, x * TS - camX, y * TS - camY, wf); }
+  for (let y = ty0; y <= ty1; y++) for (let x = tx0; x <= tx1; x++) { const g = world.g[y * W + x]; if (g === G.WATER || g === G.DEEP) drawWaterTile(wx, art, world, x, y, x * TS - camX, y * TS - camY, wf); else if (g === G.LAVA) drawLavaTile(wx, art, x * TS - camX, y * TS - camY, wf); }
   if (clickMark && t - clickMark.t0 < 500) {
     const k = Math.floor((t - clickMark.t0) / 120) % 2, mx = clickMark.x * TS - camX, my = clickMark.y * TS - camY;
     wx.fillStyle = '#ffe066'; for (const [a, b] of [[0, 0], [13 - k, 0], [0, 13 - k], [13 - k, 13 - k]]) wx.fillRect(mx + a + k, my + b + k, 3, 3 - 2 * 0);
@@ -1250,7 +1295,7 @@ function tickFrame() {
     if (pendingInvite && !pendingInvite.offer && t > pendingInvite.until) { pendingInvite = null; showInvite(); }
     if (me) {
       updateCooldowns(t);
-      if (t - lastBuffDraw > 250) { lastBuffDraw = t; renderBuffs(t); if (!$('char').classList.contains('hidden') && charTab === 'jobs') renderChar(); }
+      if (t - lastBuffDraw > 250) { lastBuffDraw = t; trackRegion(); if (!$('worldmap').classList.contains('hidden')) drawWorldMap(); renderBuffs(t); if (!$('char').classList.contains('hidden') && charTab === 'jobs') renderChar(); }
       const tg = me.tg && ents.get(me.tg);
       if (tg && !tg.dying) { $('targetFrame').classList.remove('hidden'); $('tName').textContent = mobDef(tg).name; $('tName').style.color = levelColor(tg.l); $('tLvl').textContent = `Lv ${tg.l}`; $('tBar').style.width = `${(tg.h / tg.mh) * 100}%`; renderPips($('tFx'), tg.fx); }
       else $('targetFrame').classList.add('hidden');

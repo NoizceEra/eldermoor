@@ -5,7 +5,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
-import { W, G, TOWN, BOSS, CAMP, inTown, generateWorld, generateDungeon, isSolid } from '../shared/world.js';
+import { W, G, TOWN, TOWNS, BOSS, BOSSES, CAMP, CAMPS, ISLANDS, inTown, generateWorld, generateDungeon, isSolid } from '../shared/world.js';
 import {
   SEED, TICK_MS, INV_SIZE, MOBS, QUESTS, RARITY, NPCS,
   DUNGEON_SEED, DUNGEON_REC_LVL, PORTAL, PORTAL_ID, EXIT_ID,
@@ -49,6 +49,7 @@ const instances = new Map(); // party/solo key -> dungeon zone
 let nextInstance = 1;
 const npcByRole = (role) => overworld.npcs.find((n) => n.role === role);
 const nearNpc = (p, n) => p.z === overworld && dist(p, n) <= 4.5;
+const nearShop = (p) => (p.z === overworld ? overworld.npcs.find((n) => n.role === 'shop' && dist(p, n) <= 4.5) || null : null);
 
 const solid = (z, x, y) => isSolid(z.world, x, y);
 const place = (e) => e.z.occ.set(key(e.x, e.y), e);
@@ -129,10 +130,13 @@ function starterKit(job) {
   }
   return eq;
 }
-const mkPotion = (big) => ({
-  u: uid++, s: 'potion', r: big ? 1 : 0, l: 1, b: 'potion',
-  n: big ? 'Large Health Potion' : 'Health Potion', heal: big ? 220 : 90, c: 1, v: big ? 40 : 12,
-});
+const POTIONS = [['Health Potion', 90, 12], ['Large Health Potion', 220, 40], ['Greater Health Potion', 600, 110], ['Supreme Health Potion', 1400, 300]];
+const mkPotion = (tier = 0) => {
+  const t = tier === true ? 1 : Math.max(0, Math.min(3, tier || 0));
+  const [n, heal, v] = POTIONS[t];
+  return { u: uid++, s: 'potion', r: t, l: 1, b: 'potion', n, heal, c: 1, v };
+};
+const potionTier = (lvl) => (lvl > 45 ? 3 : lvl > 28 ? 2 : lvl > 8 && Math.random() < 0.5 ? 1 : 0);
 
 function rollRarity(lvl, boss) {
   if (boss) return Math.random() < 0.3 ? 3 : 2;
@@ -175,6 +179,14 @@ const SHOP = [
   shopGear('weapon', 10, 'dagger', 'Rogue Stiletto', undefined, 600),
   shopGear('weapon', 10, 'wand', 'Hexer Wand', undefined, 600),
 ];
+
+// Higher-level towns stock better gear and stronger potions.
+function shopStock(lvl, tier) {
+  const priced = (it) => ({ ...it, price: Math.max(20, Math.round((it.v || 10) * 3)) });
+  const slots = ['weapon', 'weapon', 'body', 'head', 'legs', 'boots', 'gloves', 'cape', 'offhand', 'ring', 'amulet'];
+  return [priced(mkPotion(tier - 1)), priced(mkPotion(tier)), ...slots.map((sl) => priced(mkGear(sl, lvl, 1)))];
+}
+const SHOP_BY = new Map([[2, SHOP], [10, shopStock(22, 2)], [13, shopStock(32, 2)], [16, shopStock(44, 3)]]);
 
 // ---------------------------------------------------------------- persistence
 let saves = {};
@@ -601,7 +613,7 @@ function hurtPlayer(p, raw, from, o = {}) {
   emit(p.z, p.x, p.y, { e: 'dmg', x: p.x, y: p.y, v: amt, k: 'p', id: p.id });
   p.dirty = true;
   if (p.hp <= 0) {
-    p.hp = 0; p.dead = true; p.respawnAt = Date.now() + 4000; p.target = null; p.want = null; p.fx = {};
+    p.hp = 0; p.dead = true; p.respawnAt = Date.now() + 4000; p.target = null; p.want = null; p.fx = {}; p.deathAt = { x: p.x, y: p.y, z: p.z };
     { const tr = tradeOf(p); if (tr) endTrade(tr, `${p.name} died`); }
     emit(p.z, p.x, p.y, { e: 'fx', k: 'die', x: p.x, y: p.y, id: p.id });
     log(p, `You were slain by ${from}. Returning to town...`, '#ff6a6a');
@@ -612,7 +624,9 @@ function respawn(p) {
   unplace(p);
   const left = p.z !== overworld;
   p.z = overworld; // dying in an instance sends you back to town
-  const s = nearestFree(overworld, world.spawn.x, world.spawn.y);
+  const from = p.deathAt && p.deathAt.z === overworld ? p.deathAt : world.spawn;
+  const town = [...TOWNS].sort((a, b) => Math.hypot(a.cx - from.x, a.cy - from.y) - Math.hypot(b.cx - from.x, b.cy - from.y))[0];
+  const s = nearestFree(overworld, town.cx, town.cy + 3);
   p.x = s.x; p.y = s.y; place(p);
   if (left) send(p, zoneMsg(overworld));
   p.dead = false; p.hp = p.st.mh; p.dirty = true;
@@ -654,6 +668,38 @@ function populate() {
   around('skeleton', 10, BOSS.x, BOSS.y, 11, 20);
   const b = nearestFree(overworld, BOSS.x, BOSS.y, mobFree);
   spawnMob(overworld, 'golem', b.x, b.y);
+
+  // Sunscar Dunes
+  const [, ne, sw, se] = ISLANDS;
+  around('scarab', 36, ne.cx, ne.cy, 14, 32, [G.DUNE]);
+  around('scorpion', 30, ne.cx, ne.cy, 18, 40, [G.DUNE]);
+  around('sandviper', 24, ne.cx, ne.cy, 22, 46, [G.DUNE, G.SAND]);
+  around('mummy', 24, ne.cx, ne.cy, 32, 56);
+  around('sandgolem', 12, ne.cx, ne.cy, 38, 56);
+  around('mummy', 8, CAMPS[1].x, CAMPS[1].y, 0, 9);
+  around('sandgolem', 6, BOSSES[1].x, BOSSES[1].y, 11, 18);
+  // Frostmarch
+  around('frostslime', 34, sw.cx, sw.cy, 14, 32, [G.SNOW, G.ICE]);
+  around('snowwolf', 30, sw.cx, sw.cy, 18, 40, [G.SNOW, G.ICE]);
+  around('frostowl', 16, sw.cx, sw.cy, 20, 50);
+  around('frostsprite', 22, sw.cx, sw.cy, 26, 46);
+  around('yeti', 22, sw.cx, sw.cy, 30, 54);
+  around('icegolem', 12, sw.cx, sw.cy, 36, 56);
+  around('yeti', 8, CAMPS[2].x, CAMPS[2].y, 0, 9);
+  around('icegolem', 6, BOSSES[2].x, BOSSES[2].y, 11, 18);
+  // Cinderpeak
+  around('imp', 34, se.cx, se.cy, 14, 32, [G.BASALT, G.ASH]);
+  around('magmaslime', 28, se.cx, se.cy, 18, 38, [G.BASALT, G.ASH]);
+  around('lavahound', 24, se.cx, se.cy, 22, 46, [G.BASALT, G.ASH]);
+  around('emberknight', 22, se.cx, se.cy, 30, 52, [G.BASALT, G.ASH]);
+  around('fireelem', 18, se.cx, se.cy, 30, 54, [G.BASALT, G.ASH]);
+  around('obsidiangolem', 12, se.cx, se.cy, 38, 56);
+  around('emberknight', 8, CAMPS[3].x, CAMPS[3].y, 0, 9);
+  around('obsidiangolem', 6, BOSSES[3].x, BOSSES[3].y, 11, 18);
+  for (const bs of BOSSES.slice(1)) {
+    const spot = nearestFree(overworld, bs.x, bs.y, mobFree);
+    if (spot) spawnMob(overworld, bs.mob, spot.x, spot.y);
+  }
 }
 
 function stepMob(m, tx, ty, now) {
@@ -723,6 +769,9 @@ function mobAI(m, now) {
         const raw = ri(def.dmg[0], def.dmg[1]) * (1 + (m.lvl - def.lvl) * 0.1);
         emit(m.z, m.x, m.y, { e: 'fx', k: def.range > 2.5 ? 'arrow' : 'swing', x: m.x, y: m.y, tx: t.x, ty: t.y, id: m.id });
         hurtPlayer(t, raw, def.name, { mag: !!def.mag });
+        if (def.onhit && !t.dead && Math.random() < 0.6) {
+          for (const [fid, ms, pow] of def.onhit) addFx(t, fid, ms, EFFECTS[fid].dot ? pow * ((def.dmg[0] + def.dmg[1]) / 2) : pow, m.id);
+        }
       }
     } else if (now >= m.moveAt) {
       stepMob(m, t.x, t.y, now);
@@ -753,7 +802,7 @@ function dropLoot(m) {
     put(mkGear(slot, Math.max(1, m.lvl + ri(-1, 1)), rollRarity(m.lvl, def.boss)));
     if (def.boss) put(mkGear(rollSlot(), m.lvl + 1, rollRarity(m.lvl, true)));
   }
-  if (Math.random() < 0.3) put(mkPotion(m.lvl > 8 && Math.random() < 0.5));
+  if (Math.random() < 0.3) put(mkPotion(potionTier(m.lvl)));
 }
 
 function killMob(m, killer) {
@@ -783,7 +832,7 @@ function killMob(m, killer) {
     const q = p.quest;
     if (q.s === 1 && QUESTS[q.i].mob === m.type) {
       q.p++;
-      if (q.p >= QUESTS[q.i].need) { q.s = 2; log(p, `Quest complete: ${QUESTS[q.i].title}. Return to Elder Mira.`, '#ffe066'); }
+      if (q.p >= QUESTS[q.i].need) { q.s = 2; log(p, `Quest complete: ${QUESTS[q.i].title}. Return to ${(NPCS.find((x) => x.id === QUESTS[q.i].giver) || { name: 'the quest giver' }).name}.`, '#ffe066'); }
       else log(p, `${QUESTS[q.i].title}: ${q.p}/${QUESTS[q.i].need}`, '#ffe066');
     }
     p.dirty = true;
@@ -1104,6 +1153,7 @@ function debugCmd(p, m) {
   if (m.lvl) p.lvl = Math.max(1, Math.min(MAIN_MAX, m.lvl | 0));
   if (m.jobLvl) { p.jobs[p.job].lvl = Math.max(1, Math.min(JOB_MAX, m.jobLvl | 0)); fillBar(p); for (const id of knownOf(p)) p.knownSeen.add(id); }
   if (m.points) p.points += m.points | 0;
+  if (m.quest !== undefined) p.quest = { i: m.quest | 0, s: 0, p: 0 };
   if (m.job && JOBS[m.job]) { p.job = m.job; if (p.jobs[m.job].lvl < 1) p.jobs[m.job] = { lvl: 1, xp: 0 }; fillBar(p); }
   computeStats(p);
   fillBar(p);
@@ -1240,12 +1290,16 @@ function talk(p, id) {
   if (n.role === 'shop') {
     return send(p, {
       t: 'dialog', npc: n.id, name: n.name, text: 'Potions, blades, baubles - and I buy what you carry out of the wilds.',
-      shop: SHOP.map((s) => ({ ...s })),
+      shop: (SHOP_BY.get(n.id) || SHOP).map((x) => ({ ...x })),
     });
   }
   const q = p.quest;
   if (q.i >= QUESTS.length) return send(p, { t: 'dialog', npc: n.id, name: n.name, text: 'You have done more for Eldermoor than any hero in living memory. Rest easy, champion.' });
   const Q = QUESTS[q.i];
+  if (n.id !== Q.giver) {
+    const g = NPCS.find((x) => x.id === Q.giver);
+    return send(p, { t: 'dialog', npc: n.id, name: n.name, text: g ? `Your next task is with ${g.name}. Seek them out.` : 'Safe travels.' });
+  }
   if (q.s === 0) return send(p, { t: 'dialog', npc: n.id, name: n.name, title: Q.title, text: Q.text, reward: `${Q.xp} XP, ${Q.gold} gold${Q.reward ? ', epic gear' : ''}`, opts: [{ k: 'accept', l: 'Accept quest' }] });
   if (q.s === 1) return send(p, { t: 'dialog', npc: n.id, name: n.name, title: Q.title, text: `Still at it? ${q.p}/${Q.need} so far.` });
   send(p, { t: 'dialog', npc: n.id, name: n.name, title: Q.title, text: 'You did it! Eldermoor is in your debt.', reward: `${Q.xp} XP, ${Q.gold} gold${Q.reward ? ', epic gear' : ''}`, opts: [{ k: 'turnin', l: 'Claim reward' }] });
@@ -1319,27 +1373,26 @@ function onMessage(ws, raw) {
     }
     case 'talk': talk(p, m.id | 0); break;
     case 'questAccept': {
-      const n = npcByRole('quest');
-      if (!nearNpc(p, n) || p.quest.i >= QUESTS.length || p.quest.s !== 0) return;
+      const gq = QUESTS[p.quest.i], n = gq && overworld.npcs.find((x) => x.id === gq.giver);
+      if (!n || !nearNpc(p, n) || p.quest.s !== 0) return;
       p.quest.s = 1; p.quest.p = 0; p.dirty = true;
       log(p, `Quest accepted: ${QUESTS[p.quest.i].title}`, '#ffe066');
       break;
     }
     case 'questTurnIn': {
-      const n = npcByRole('quest'), q = p.quest;
-      if (!nearNpc(p, n) || q.i >= QUESTS.length || q.s !== 2) return;
-      const Q = QUESTS[q.i];
+      const q = p.quest, Q = QUESTS[q.i], n = Q && overworld.npcs.find((x) => x.id === Q.giver);
+      if (!n || !nearNpc(p, n) || q.s !== 2) return;
       if (Q.reward && !p.inv.includes(null)) return log(p, 'Make room in your pack first.', '#ff8a8a');
       p.gold += Q.gold;
       giveXp(p, Q.xp);
-      if (Q.reward) addItem(p, mkGear(rollSlot(), 20, 3));
+      if (Q.reward) addItem(p, mkGear(rollSlot(), Q.rewardLvl || 20, 3));
       log(p, `Quest complete! +${Q.xp} XP, +${Q.gold} gold.`, '#ffe066');
       q.i++; q.s = 0; q.p = 0; p.dirty = true;
       break;
     }
     case 'buy': {
-      const n = npcByRole('shop'), it = SHOP[m.i | 0];
-      if (!it || !nearNpc(p, n)) return;
+      const sh = nearShop(p), it = sh && (SHOP_BY.get(sh.id) || SHOP)[m.i | 0];
+      if (!it) return;
       if (p.gold < it.price) return log(p, 'Not enough gold.', '#ff8a8a');
       const { price, ...base } = it;
       if (!addItem(p, { ...base, u: uid++, c: 1 })) return log(p, 'Your pack is full.', '#ff8a8a');
@@ -1348,8 +1401,8 @@ function onMessage(ws, raw) {
       break;
     }
     case 'sell': {
-      const n = npcByRole('shop'), it = p.inv[m.slot | 0];
-      if (!it || !nearNpc(p, n)) return;
+      const it = p.inv[m.slot | 0];
+      if (!it || !nearShop(p)) return;
       const gold = Math.max(1, Math.floor(it.v * 0.5)) * (it.c || 1);
       p.gold += gold; p.inv[m.slot | 0] = null; p.dirty = true;
       log(p, `Sold ${it.n} for ${gold} gold.`, '#ffd23a');

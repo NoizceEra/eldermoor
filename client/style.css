@@ -203,3 +203,11 @@ body.touch #char { top: 8px; left: 8px; right: 8px; width: auto; max-height: 90v
 .slot.eq { width: auto; height: auto; aspect-ratio: 1; flex: none; }
 .slot .lbl { font-size: 6px; }
 @media (max-height: 820px) { .logo { font-size: clamp(20px, 4vw, 34px); } .card canvas { width: 44px; height: 44px; margin-bottom: 3px; } .card { padding: 6px 2px; } .tag { display: none; } }
+
+/* ---- world map + region names ---- */
+#regionName { text-align: center; text-shadow: 1px 1px 0 var(--ink); color: #cfc4ff; min-height: 10px; line-height: 1.4; }
+#region { position: absolute; left: 50%; top: 64px; transform: translateX(-50%); font-size: 14px; color: #ffe8a0; text-shadow: 2px 2px 0 var(--ink), 4px 4px 0 #6a2a10; text-align: center; pointer-events: none; opacity: 0; transition: opacity .6s; white-space: nowrap; }
+#region.show { opacity: 1; }
+#worldmap { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); padding: 12px; display: flex; flex-direction: column; gap: 8px; z-index: 7; }
+#wmCanvas { width: min(512px, 82vw, 78vh); height: min(512px, 82vw, 78vh); image-rendering: pixelated; background: var(--ink); }
+body.touch #region { top: 120px; font-size: 11px; }
