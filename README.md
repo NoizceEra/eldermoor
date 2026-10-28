@@ -67,7 +67,9 @@ A second dungeon, a bank, crafting, more zones/dungeons, player-vs-player arenas
 
 One Node service serves the client and the WebSocket (`/ws`), so a single host is enough.
 
-**Railway** (matches the other games): from this folder run `railway login`, `railway init`, `railway up`, then add a
+**Render** (free plan, used for the public link): `render.yaml` is a ready blueprint (Node service, health check `/api/status`, auto-deploys from `main`). The free plan sleeps after ~15 minutes idle (first visit then takes about a minute) and its disk is wiped on restart, so heroes saved on the free plan can reset; add a paid instance with a persistent disk, or move saves to a database, to keep them.
+
+**Railway**: from this folder run `railway login`, `railway init`, `railway up`, then add a
 **Volume mounted at `/data`** so hero saves survive redeploys, and `railway domain` for a public URL. `railway.json` and the
 `Dockerfile` are already set up (health check `/api/status`, saves at `EM_SAVE=/data/saves.json`).
 

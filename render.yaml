@@ -1,0 +1,14 @@
+# Render blueprint: one Node web service serves the client and the /ws game socket.
+services:
+  - type: web
+    name: eldermoor
+    runtime: node
+    plan: free
+    branch: main
+    buildCommand: npm install --omit=dev
+    startCommand: node server/index.js
+    healthCheckPath: /api/status
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 22
