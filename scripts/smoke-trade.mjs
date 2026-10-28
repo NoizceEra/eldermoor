@@ -25,8 +25,9 @@ async function bot(name) {
   });
   await new Promise((r) => ws.on('open', r));
   b.tx({ t: 'login', name, pass: 'x', cls: 'warrior' });
-  await wait(400);
+  for (let i = 0; i < 40 && !b.me; i++) await wait(100);
   if (!b.me) fail(`${name}: no me message`);
+  await wait(250); // let the first state packets arrive
   b.items = () => b.me.inv.filter(Boolean);
   b.has = (u) => b.me.inv.some((i) => i && i.u === u);
   b.gear = () => b.items().filter((i) => i.s !== 'potion');

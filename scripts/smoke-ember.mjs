@@ -34,8 +34,9 @@ async function bot(name) {
   });
   await new Promise((r) => ws.on('open', r));
   b.tx({ t: 'login', name, pass: 'x', cls: 'warrior' });
-  await wait(450);
+  for (let i = 0; i < 30 && !b.me; i++) await wait(100);
   if (!b.me) fail(`${name}: no me message`);
+  await wait(250); // let the first state packets arrive
   b.tx({ t: 'dbg', god: true }); await wait(150);
   b.pos = () => b.ents.find((e) => e.i === b.me.id);
   b.tp = async (x, y) => {

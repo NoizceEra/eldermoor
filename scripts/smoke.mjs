@@ -28,8 +28,9 @@ ws.on('message', (d) => {
 await new Promise((r) => ws.on('open', r));
 const tx = (o) => ws.send(JSON.stringify(o));
 tx({ t: 'login', name: 'SmokeBot', pass: 'x', cls: 'warrior' });
-await wait(400);
+for (let i = 0; i < 40 && !st.me; i++) await wait(100);
 if (!st.me) fail('no me message');
+await wait(250); // let the first state packets arrive
 const start = { x: st.ents.find((e) => e.i === st.me.id).x, y: st.ents.find((e) => e.i === st.me.id).y };
 for (let i = 0; i < 8; i++) { tx({ t: 'move', dx: 0, dy: 1 }); await wait(170); }
 const now = st.ents.find((e) => e.i === st.me.id);

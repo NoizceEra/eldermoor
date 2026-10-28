@@ -32,8 +32,9 @@ async function bot(name, { delta = false, cls = 'warrior' } = {}) {
   });
   await new Promise((r) => ws.on('open', r));
   b.tx({ t: 'login', name, pass: 'x', cls, delta });
-  await wait(450);
+  for (let i = 0; i < 40 && !b.me; i++) await wait(100);
   if (!b.me) fail(`${name}: no me message`);
+  await wait(250); // let the first state packets arrive
   b.pos = () => b.map.get(b.me.id);
   b.tp = async (x, y) => {
     for (const [dx, dy] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [2, 0], [0, 2]]) {

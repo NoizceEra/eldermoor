@@ -42,8 +42,9 @@ async function bot(name, cls = 'warrior', look) {
   });
   await new Promise((r) => ws.on('open', r));
   b.tx({ t: 'login', name, pass: 'x', cls, look });
-  await wait(450);
+  for (let i = 0; i < 40 && !b.me; i++) await wait(100);
   if (!b.me) fail(`${name}: no me message`);
+  await wait(250); // let the first state packets arrive
   b.inv = (slot) => b.me.inv.filter((i) => i && i.s === slot);
   return b;
 }
