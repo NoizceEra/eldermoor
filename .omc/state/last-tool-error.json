@@ -1,0 +1,7 @@
+{
+  "tool_name": "mcp__Claude_Browser__javascript_tool",
+  "tool_input_preview": "{\"action\":\"javascript_exec\",\"text\":\"const sleep=ms=>new Promise(r=>setTimeout(r,ms));\\nsetInterval(()=>__em.tickFrame(),16);\\ndocument.getElementById('name').value='Aldric'; document.getElementById('e...",
+  "error": "javascript_tool timed out after 45s. The Browser pane is currently hidden. The script was sent to the page and may still be running and changing it (code after an await, timers, listeners), so check the page before running it again. The script did not finish (a promise that never settles, or polling that never ends); return sooner or split the work across calls.",
+  "timestamp": "2026-10-28T17:33:14.847Z",
+  "retry_count": 1
+}

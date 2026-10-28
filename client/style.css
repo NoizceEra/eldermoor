@@ -1,0 +1,88 @@
+:root {
+  --bg: #1c1530; --bg2: #2a2045; --edge: #5a4a8a; --ink: #0d0a18; --txt: #eae6ff; --dim: #9a90c0; --gold: #ffd23a;
+  --font: 'Press Start 2P', 'Lucida Console', 'Courier New', monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #0d0a18; color: var(--txt); font-family: var(--font); font-size: 10px; line-height: 1.5; user-select: none; }
+canvas#screen { position: fixed; left: 0; top: 0; image-rendering: pixelated; image-rendering: crisp-edges; display: block; }
+.hidden { display: none !important; }
+.small { font-size: 8px; color: var(--dim); }
+
+.panel { background: var(--bg); box-shadow: 0 0 0 2px var(--ink), 0 0 0 4px var(--edge), 0 0 0 6px var(--ink); }
+button { font-family: var(--font); font-size: 9px; color: var(--txt); background: #4a3a7a; border: 0; padding: 8px 10px; cursor: pointer; box-shadow: inset -2px -2px 0 #2a2050, inset 2px 2px 0 #7a68b8, 0 0 0 2px var(--ink); }
+button:hover { background: #5a4a92; }
+button:active { box-shadow: inset 2px 2px 0 #2a2050, inset -2px -2px 0 #7a68b8, 0 0 0 2px var(--ink); }
+button.x { padding: 2px 6px; }
+input { font-family: var(--font); font-size: 10px; color: var(--txt); background: var(--ink); border: 0; padding: 8px; width: 100%; outline: 0; box-shadow: inset 0 0 0 2px #3a2f60; }
+input:focus { box-shadow: inset 0 0 0 2px #8a78d8; }
+
+/* login */
+#login { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: radial-gradient(ellipse at center, rgba(13,10,24,.35), rgba(13,10,24,.8)); z-index: 5; padding: 12px; }
+.logo { font-size: clamp(22px, 6vw, 56px); color: #ffe066; letter-spacing: 3px; text-shadow: 3px 3px 0 #c8651a, 6px 6px 0 #6a2a10, 8px 8px 0 #0d0a18; }
+.tag { color: #cfc4ff; text-shadow: 2px 2px 0 var(--ink); }
+#loginForm { width: min(480px, 94vw); padding: 18px; display: flex; flex-direction: column; gap: 12px; }
+#loginForm label { display: flex; flex-direction: column; gap: 6px; font-size: 8px; color: var(--dim); }
+.classes { display: flex; gap: 10px; }
+.card { flex: 1; text-align: center; padding: 10px 4px; background: var(--bg2); cursor: pointer; box-shadow: 0 0 0 2px var(--ink); font-size: 9px; }
+.card canvas { width: 64px; height: 64px; image-rendering: pixelated; display: block; margin: 0 auto 6px; }
+.card.sel { background: #4a3a7a; box-shadow: 0 0 0 2px var(--gold), 0 0 0 4px var(--ink); }
+.classDesc { min-height: 44px; font-size: 8px; color: #cfc4ff; }
+#enter { padding: 12px; font-size: 11px; background: #c8651a; box-shadow: inset -3px -3px 0 #8a3a0a, inset 3px 3px 0 #ff9a4a, 0 0 0 2px var(--ink); }
+#enter:hover { background: #e07a2a; }
+.err { color: #ff6a6a; min-height: 12px; font-size: 8px; }
+.foot { text-shadow: 2px 2px 0 var(--ink); text-align: center; }
+
+/* HUD */
+#ui { position: fixed; inset: 0; pointer-events: none; z-index: 2; }
+#ui > * { pointer-events: auto; }
+#plate { position: absolute; left: 14px; top: 14px; width: 240px; padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+#targetFrame { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); width: 240px; padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+.row { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+.bar { position: relative; height: 12px; background: var(--ink); box-shadow: 0 0 0 2px var(--ink); overflow: hidden; }
+.bar i { display: block; height: 100%; width: 100%; transition: width .12s; }
+.bar.hp i { background: linear-gradient(#ff8a8a 0 25%, #d83a3a 25% 70%, #a02828 70%); }
+.bar.xp { height: 6px; } .bar.xp i { background: linear-gradient(#e8c8ff 0 30%, #a86bff 30% 70%, #7a44c8 70%); width: 0; }
+.bar span { position: absolute; inset: 0; text-align: center; font-size: 8px; line-height: 12px; text-shadow: 1px 1px 0 var(--ink); }
+#side { position: absolute; right: 18px; top: 18px; width: 164px; display: flex; flex-direction: column; gap: 14px; }
+#minimap { width: 164px; height: 164px; image-rendering: pixelated; display: block; }
+#quest { padding: 8px; color: var(--txt); min-height: 20px; line-height: 1.7; }
+#quest b { color: var(--gold); }
+#skillbar { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; gap: 10px; }
+.sk { position: relative; width: 52px; height: 52px; background: var(--bg); cursor: pointer; box-shadow: 0 0 0 2px var(--ink), 0 0 0 4px var(--edge), 0 0 0 6px var(--ink); }
+.sk img { width: 100%; height: 100%; image-rendering: pixelated; display: block; padding: 6px; }
+.sk .key { position: absolute; left: 3px; top: 1px; font-size: 8px; color: var(--gold); text-shadow: 1px 1px 0 var(--ink); }
+.sk .cd { position: absolute; left: 0; right: 0; bottom: 0; height: 0; background: rgba(13,10,24,.78); }
+.sk .cdt { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 10px; text-shadow: 1px 1px 0 var(--ink); }
+.sk .cnt { position: absolute; right: 3px; bottom: 1px; font-size: 8px; }
+#chat { position: absolute; left: 14px; bottom: 14px; width: min(400px, 40vw); display: flex; flex-direction: column; gap: 4px; }
+#chatLog { height: 150px; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; font-size: 8px; line-height: 1.7; text-shadow: 1px 1px 0 var(--ink); background: linear-gradient(rgba(13,10,24,0), rgba(13,10,24,.55)); padding: 4px; pointer-events: none; }
+#chatLog div { word-break: break-word; }
+#chatIn { background: rgba(13,10,24,.8); font-size: 9px; }
+#inv { position: absolute; right: 18px; top: 220px; width: 268px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+#equip { display: flex; gap: 8px; justify-content: space-between; }
+#slots { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
+.slot { position: relative; aspect-ratio: 1; background: var(--ink); box-shadow: inset 0 0 0 2px #2a2250; cursor: pointer; }
+.slot.eq { width: 48px; height: 48px; aspect-ratio: auto; flex: none; }
+.slot img { width: 100%; height: 100%; image-rendering: pixelated; display: block; padding: 3px; }
+.slot .cnt { position: absolute; right: 2px; bottom: 0; font-size: 8px; text-shadow: 1px 1px 0 var(--ink); }
+.slot .lbl { position: absolute; left: 0; right: 0; bottom: 1px; text-align: center; font-size: 6px; color: #5a4a8a; }
+.slot.sel { box-shadow: inset 0 0 0 2px var(--gold); }
+#itemInfo { min-height: 92px; line-height: 1.7; color: var(--txt); }
+#itemInfo .btns { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+#dialog { position: absolute; left: 50%; bottom: 96px; transform: translateX(-50%); width: min(560px, 92vw); padding: 14px; display: flex; flex-direction: column; gap: 10px; max-height: 60vh; overflow: auto; }
+#dialog .top { display: flex; gap: 12px; align-items: flex-start; }
+#dialog canvas { width: 64px; height: 64px; image-rendering: pixelated; background: var(--ink); flex: none; }
+#dialog .txt { line-height: 1.8; font-size: 9px; }
+#dialog .title { color: var(--gold); margin-bottom: 4px; }
+#dialog .rew { color: #8be88b; font-size: 8px; margin-top: 6px; }
+.shopRow { display: flex; align-items: center; gap: 10px; padding: 4px; background: var(--bg2); font-size: 8px; }
+.shopRow img { width: 32px; height: 32px; image-rendering: pixelated; flex: none; background: var(--ink); }
+.shopRow .grow { flex: 1; line-height: 1.6; }
+#death { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; background: rgba(90,10,10,.45); font-size: 28px; color: #ff6a6a; text-shadow: 3px 3px 0 var(--ink); pointer-events: none; }
+#death small { font-size: 10px; color: var(--txt); }
+#banner { position: absolute; left: 50%; top: 22%; transform: translateX(-50%); font-size: 22px; color: var(--gold); text-shadow: 3px 3px 0 #6a2a10, 5px 5px 0 var(--ink); text-align: center; pointer-events: none; white-space: nowrap; }
+#toast { position: absolute; left: 50%; top: 70px; transform: translateX(-50%); font-size: 9px; color: #ff8a8a; text-shadow: 2px 2px 0 var(--ink); pointer-events: none; }
+#dc { position: fixed; inset: 0; z-index: 9; display: flex; align-items: center; justify-content: center; background: rgba(13,10,24,.8); }
+#dc .panel { padding: 20px; text-align: center; display: flex; flex-direction: column; gap: 10px; }
+
+@media (max-width: 900px) { #chat { width: 56vw; } #chatLog { height: 90px; } #side { width: 110px; } #minimap { width: 110px; height: 110px; } #inv { top: 150px; } #plate { width: 190px; } }

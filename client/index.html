@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Eldermoor Online</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3E%3Crect width='8' height='8' fill='%231c1530'/%3E%3Crect x='3' y='1' width='2' height='4' fill='%23e8e8f0'/%3E%3Crect x='2' y='5' width='4' height='1' fill='%23e8c04a'/%3E%3Crect x='3' y='6' width='2' height='1' fill='%237a5230'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap">
+<link rel="stylesheet" href="/client/style.css">
+</head>
+<body>
+<canvas id="screen"></canvas>
+
+<div id="login">
+  <div class="logo">ELDERMOOR</div>
+  <div class="tag">a classic online adventure</div>
+  <form id="loginForm" class="panel">
+    <div class="classes" id="classes"></div>
+    <div class="classDesc" id="classDesc"></div>
+    <label>Hero name <input id="name" maxlength="14" autocomplete="off" placeholder="3-14 letters" required></label>
+    <label>Secret word <input id="pass" type="password" maxlength="40" placeholder="protects your hero"></label>
+    <button id="enter" type="submit">ENTER THE REALM</button>
+    <div class="err" id="loginErr"></div>
+    <div class="small" id="online"></div>
+  </form>
+  <div class="small foot">WASD / arrows walk &middot; click to move &amp; attack &middot; 1-3 skills &middot; Q potion &middot; I pack &middot; E talk &middot; Enter chat</div>
+</div>
+
+<div id="ui" class="hidden">
+  <div id="plate" class="panel">
+    <div class="row"><b id="pName"></b><span id="pLvl"></span></div>
+    <div class="bar hp"><i id="hpBar"></i><span id="hpTxt"></span></div>
+    <div class="bar xp"><i id="xpBar"></i></div>
+    <div class="row small"><span id="pGold"></span><span id="pStats"></span></div>
+  </div>
+  <div id="targetFrame" class="panel hidden">
+    <div class="row"><b id="tName"></b><span id="tLvl"></span></div>
+    <div class="bar hp"><i id="tBar"></i></div>
+  </div>
+  <div id="side">
+    <canvas id="minimap" width="64" height="64" class="panel"></canvas>
+    <div id="quest" class="panel small"></div>
+  </div>
+  <div id="skillbar"></div>
+  <div id="chat">
+    <div id="chatLog"></div>
+    <input id="chatIn" maxlength="120" placeholder="Press Enter to chat" autocomplete="off">
+  </div>
+  <div id="inv" class="panel hidden">
+    <div class="row"><b>Pack</b><button class="x" data-close="inv">x</button></div>
+    <div id="equip"></div>
+    <div id="slots"></div>
+    <div class="small" id="invGold"></div>
+    <div id="itemInfo" class="small"></div>
+  </div>
+  <div id="dialog" class="panel hidden"></div>
+  <div id="death" class="hidden"><div>YOU DIED</div><small>Returning to town...</small></div>
+  <div id="banner" class="hidden"></div>
+  <div id="toast"></div>
+</div>
+<div id="dc" class="hidden"><div class="panel"><b>Disconnected</b><p id="dcWhy"></p><button onclick="location.reload()">RECONNECT</button></div></div>
+<script type="module" src="/client/main.js"></script>
+</body>
+</html>
