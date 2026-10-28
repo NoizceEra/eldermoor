@@ -211,3 +211,16 @@ body.touch #char { top: 8px; left: 8px; right: 8px; width: auto; max-height: 90v
 #worldmap { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); padding: 12px; display: flex; flex-direction: column; gap: 8px; z-index: 7; }
 #wmCanvas { width: min(512px, 82vw, 78vh); height: min(512px, 82vw, 78vh); image-rendering: pixelated; background: var(--ink); }
 body.touch #region { top: 120px; font-size: 11px; }
+
+/* ---- menu / settings / quest log ---- */
+#menu, #qlog { position: absolute; left: 50%; top: 70px; transform: translateX(-50%); width: min(540px, 94vw); max-height: calc(100vh - 110px); overflow: auto; padding: 14px; display: flex; flex-direction: column; gap: 8px; z-index: 8; }
+#menu h4, #qlog h4 { margin: 4px 0 0; font-size: 9px; color: var(--gold); font-weight: normal; }
+.setrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: var(--bg2); padding: 6px 8px; font-size: 8px; }
+.setrow input[type=range] { width: 140px; padding: 0; background: none; box-shadow: none; }
+.setrow input[type=checkbox] { width: 16px; height: 16px; padding: 0; }
+.keys { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; font-size: 7px; line-height: 1.6; color: var(--dim); }
+.keys b { color: var(--txt); font-weight: normal; }
+.qrow { background: var(--bg2); padding: 6px 8px; font-size: 8px; line-height: 1.6; border-left: 4px solid #3a2f60; }
+.qrow.done { border-color: #5fd35f; opacity: .6; } .qrow.cur { border-color: var(--gold); } .qrow.lock { opacity: .4; }
+.qrow .ds { color: var(--dim); font-size: 7px; }
+body.touch #menu, body.touch #qlog { top: 8px; width: 96vw; max-height: 92vh; }

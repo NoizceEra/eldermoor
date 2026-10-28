@@ -39,7 +39,7 @@ const players = new Map(); // id -> player
 // A zone is one self-contained map with its own monsters, loot and occupancy:
 // the overworld, or a private dungeon instance.
 function makeZone(id, kind, w) {
-  return { id, kind, world: w, mobs: new Map(), drops: new Map(), occ: new Map(), npcs: [], emptyAt: 0 };
+  return { id, kind, world: w, mobs: new Map(), drops: new Map(), occ: new Map(), grid: new Map(), npcs: [], emptyAt: 0 };
 }
 const overworld = makeZone('world', 'world', world);
 overworld.npcs = [...NPCS, PORTAL, PORTAL2].map((n) => ({ ...n, k: 'n' }));
@@ -52,8 +52,27 @@ const nearNpc = (p, n) => p.z === overworld && dist(p, n) <= 4.5;
 const nearShop = (p) => (p.z === overworld ? overworld.npcs.find((n) => n.role === 'shop' && dist(p, n) <= 4.5) || null : null);
 
 const solid = (z, x, y) => isSolid(z.world, x, y);
-const place = (e) => e.z.occ.set(key(e.x, e.y), e);
-const unplace = (e) => { if (e.z.occ.get(key(e.x, e.y)) === e) e.z.occ.delete(key(e.x, e.y)); };
+// Monsters live in a 16x16-tile bucket grid so "who is near here" never scans the whole zone.
+const cellOf = (x, y) => (x >> 4) | ((y >> 4) << 8);
+const place = (e) => {
+  e.z.occ.set(key(e.x, e.y), e);
+  if (e.k === 'm') { const c = cellOf(e.x, e.y); let b = e.z.grid.get(c); if (!b) e.z.grid.set(c, (b = new Set())); b.add(e); e.cell = c; }
+};
+const unplace = (e) => {
+  if (e.z.occ.get(key(e.x, e.y)) === e) e.z.occ.delete(key(e.x, e.y));
+  if (e.k === 'm') { const b = e.z.grid.get(e.cell); if (b) b.delete(e); }
+};
+/** living monsters within a box around (x, y) */
+function mobsIn(z, x, y, rx, ry) {
+  const out = [];
+  for (let cy = Math.max(0, (y - ry) >> 4); cy <= (y + ry) >> 4; cy++) {
+    for (let cx = Math.max(0, (x - rx) >> 4); cx <= (x + rx) >> 4; cx++) {
+      const b = z.grid.get(cx | (cy << 8));
+      if (b) for (const m of b) if (!m.dead && Math.abs(m.x - x) <= rx && Math.abs(m.y - y) <= ry) out.push(m);
+    }
+  }
+  return out;
+}
 const free = (z, x, y) => !solid(z, x, y) && !z.occ.has(key(x, y));
 const safeAt = (z, x, y) => z.kind === 'world' && inTown(x, y); // monsters never enter, players can't be hurt
 const mobFree = (z, x, y) => free(z, x, y) && !safeAt(z, x, y);
@@ -340,6 +359,7 @@ function login(ws, m) {
   for (const old of players.values()) if (old.name.toLowerCase() === k) { old.ws.close(4000, 'Logged in elsewhere'); dropPlayer(old); }
   p.id = nextId++; p.k = 'p'; p.ws = ws; p.f = 0; p.dead = false; p.target = null;
   p.moveAt = 0; p.atkAt = 0; p.potAt = 0; p.want = null; p.lastHit = 0; p.regenAt = 0; p.dirty = true; p.msgs = 0;
+  p.delta = !!m.delta; p.seen = new Map();
   p.chatAt = 0; p.gcdAt = 0; p.jobSwitchAt = 0; p.stunUntil = 0; p.party = 0; p.invite = null; p.invAt = 0; p.trade = 0; p.tradeInv = null; p.trAt = 0;
   computeStats(p);
   fillBar(p);
@@ -453,6 +473,11 @@ function tryMove(p, dx, dy, now) {
 }
 
 function pickup(p, d) {
+  const now = Date.now();
+  if (d.lock && now < d.lock.until && !d.lock.ids.has(p.id)) { // fresh loot belongs to the heroes who fought for it
+    if (now - (p.lockMsgAt || 0) > 2500) { p.lockMsgAt = now; log(p, `That loot is reserved for the party that earned it (${Math.ceil((d.lock.until - now) / 1000)}s).`, '#ff9a6a'); }
+    return;
+  }
   if (d.gold) {
     p.gold += d.gold;
     log(p, `+${d.gold} gold`, '#ffd23a');
@@ -628,7 +653,7 @@ function respawn(p) {
   const town = [...TOWNS].sort((a, b) => Math.hypot(a.cx - from.x, a.cy - from.y) - Math.hypot(b.cx - from.x, b.cy - from.y))[0];
   const s = nearestFree(overworld, town.cx, town.cy + 3);
   p.x = s.x; p.y = s.y; place(p);
-  if (left) send(p, zoneMsg(overworld));
+  if (left) { p.seen = new Map(); send(p, zoneMsg(overworld)); }
   p.dead = false; p.hp = p.st.mh; p.dirty = true;
   emit(p.z, p.x, p.y, { e: 'fx', k: 'heal', x: p.x, y: p.y, id: p.id });
 }
@@ -789,11 +814,18 @@ function mobAI(m, now) {
   }
 }
 
-function dropLoot(m) {
+function dropLoot(m, killer) {
   const def = MOBS[m.type];
+  const ids = new Set(killer && killer.id ? [killer.id] : []);
+  for (const pid of m.dmgBy.keys()) {
+    ids.add(pid);
+    const q = players.get(pid), pt = q && partyOf(q);
+    if (pt) for (const id of pt.members) ids.add(id);
+  }
+  const lock = { until: Date.now() + (def.boss ? 15000 : 8000), ids };
   const put = (item, gold) => {
     const s = nearestFree(m.z, m.x, m.y, (z, x, y) => !solid(z, x, y) && ![...z.drops.values()].some((d) => d.x === x && d.y === y), 3) || { x: m.x, y: m.y };
-    const d = { id: nextId++, x: s.x, y: s.y, exp: Date.now() + 90000, gold, item };
+    const d = { id: nextId++, x: s.x, y: s.y, exp: Date.now() + 90000, gold, item, lock };
     m.z.drops.set(d.id, d);
   };
   put(null, ri(def.gold[0], def.gold[1]));
@@ -809,7 +841,7 @@ function killMob(m, killer) {
   const def = MOBS[m.type];
   m.dead = true; m.respawnAt = m.z.kind === 'dungeon' ? Infinity : Date.now() + def.respawn; unplace(m);
   emit(m.z, m.x, m.y, { e: 'fx', k: 'die', x: m.x, y: m.y, id: m.id });
-  dropLoot(m);
+  dropLoot(m, killer);
   let total = 0;
   for (const v of m.dmgBy.values()) total += v;
   // XP share per player. Party members in range split the kill (with a group bonus), contributor or not.
@@ -849,7 +881,7 @@ function killMob(m, killer) {
 const liveMobs = (z) => [...z.mobs.values()].filter((m) => !m.dead);
 function nearestMob(p, range) {
   let best = null, bd = range;
-  for (const m of liveMobs(p.z)) { const d = dist(p, m); if (d <= bd) { bd = d; best = m; } }
+  for (const m of mobsIn(p.z, p.x, p.y, Math.ceil(range), Math.ceil(range))) { const d = dist(p, m); if (d <= bd) { bd = d; best = m; } }
   return best;
 }
 const targetOf = (p) => { const m = p.target && p.z.mobs.get(p.target); return m && !m.dead ? m : null; };
@@ -940,7 +972,7 @@ function castSkill(p, sk) {
     p.f = Math.abs(tgt.x - p.x) >= Math.abs(tgt.y - p.y) ? (tgt.x > p.x ? 3 : 2) : (tgt.y > p.y ? 0 : 1);
     return true;
   };
-  const near = (r, from = p) => liveMobs(p.z).filter((m) => Math.hypot(m.x - from.x, m.y - from.y) <= r);
+  const near = (r, from = p) => mobsIn(p.z, from.x, from.y, Math.ceil(r), Math.ceil(r)).filter((m) => Math.hypot(m.x - from.x, m.y - from.y) <= r);
   const allies = (r) => {
     const out = [p], pt = partyOf(p);
     if (pt) for (const id of pt.members) { const q = players.get(id); if (q && q !== p && q.z === p.z && !q.dead && dist(p, q) <= r) out.push(q); }
@@ -1077,7 +1109,7 @@ function moveToZone(p, z, x, y) {
   { const tr = tradeOf(p); if (tr) endTrade(tr, 'you left the area'); }
   unplace(p);
   p.z = z; p.x = x; p.y = y; place(p);
-  p.target = null; p.want = null; p.dirty = true;
+  p.target = null; p.want = null; p.dirty = true; p.seen = new Map();
   send(p, zoneMsg(z));
 }
 
@@ -1148,6 +1180,7 @@ function debugCmd(p, m) {
     const x = m.tp[0] | 0, y = m.tp[1] | 0;
     if (free(p.z, x, y)) { unplace(p); p.x = x; p.y = y; place(p); }
   }
+  if (m.collect) for (const d of [...p.z.drops.values()]) if (d.x === p.x && d.y === p.y) pickup(p, d);
   if (m.atkMul) p.dbgMul = Number(m.atkMul) || 0;
   if (m.gold) p.gold += m.gold | 0;
   if (m.give) for (let i = 0; i < (m.n || 1); i++) addItem(p, m.give === 'potion' ? mkPotion(false) : mkGear(m.give === 'armor' ? 'body' : m.give === 'trinket' ? 'ring' : m.give, 10, Number.isInteger(m.r) ? m.r : 2));
@@ -1471,29 +1504,42 @@ function onMessage(ws, raw) {
 }
 
 // ---------------------------------------------------------------- main loop
-let tickN = 0;
+let tickN = 0, tickMs = 0, awakeMobs = 0;
 const VX = 32, VY = 20;
+const playerEnt = (o) => ({ i: o.id, k: 'p', x: o.x, y: o.y, f: o.f, h: o.hp, mh: o.st.mh, n: o.name, l: o.lvl, c: o.job, lk: o.look, vs: visTokens(o.eq), fx: fxIds(o), d: o.dead ? 1 : 0, sp: o.st.moveMul > 1.2 ? 1 : 0 });
+const mobEnt = (m, now) => ({ i: m.id, k: 'm', s: m.type, x: m.x, y: m.y, f: m.f, h: m.hp, mh: m.mh, l: m.lvl, st: m.stunUntil > now ? 1 : 0, fx: fxIds(m) });
+const dropEnt = (d) => ({ i: d.id, k: 'd', x: d.x, y: d.y, g: d.gold ? 1 : 0, b: d.item ? d.item.b : '', r: d.item ? d.item.r : 0, cl: d.item ? d.item.cl || '' : '', n: d.item ? d.item.n : `${d.gold} gold` });
+
+/**
+ * State packets. Every entity is serialised once per broadcast and shared by all viewers. Clients that
+ * opt in with `delta` only receive entities whose serialised form changed, plus a list of ids that left
+ * their view; everyone else still gets the full list.
+ */
 function broadcast(now) {
+  const cache = new Map();
+  const ser = (o, make) => { let t = cache.get(o); if (t === undefined) { t = JSON.stringify(make(o, now)); cache.set(o, t); } return t; };
   for (const p of players.values()) {
-    const ents = [];
-    for (const o of players.values()) {
-      if (o.z !== p.z || Math.abs(o.x - p.x) > VX || Math.abs(o.y - p.y) > VY) continue;
-      ents.push({ i: o.id, k: 'p', x: o.x, y: o.y, f: o.f, h: o.hp, mh: o.st.mh, n: o.name, l: o.lvl, c: o.job, lk: o.look, vs: visTokens(o.eq), fx: fxIds(o), d: o.dead ? 1 : 0, sp: o.st.moveMul > 1.2 ? 1 : 0 });
+    if (p.ws.readyState !== 1) continue;
+    const items = [];
+    for (const o of players.values()) if (o.z === p.z && Math.abs(o.x - p.x) <= VX && Math.abs(o.y - p.y) <= VY) items.push([o.id, ser(o, playerEnt)]);
+    for (const m of mobsIn(p.z, p.x, p.y, VX, VY)) items.push([m.id, ser(m, mobEnt)]);
+    for (const d of p.z.drops.values()) if (Math.abs(d.x - p.x) <= VX && Math.abs(d.y - p.y) <= VY) items.push([d.id, ser(d, dropEnt)]);
+    if (!p.delta) {
+      p.ws.send(`{"t":"s","e":[${items.map((i) => i[1]).join(',')}],"tm":${now}}`);
+    } else {
+      const seen = new Map(), changed = [];
+      for (const [id, str] of items) { seen.set(id, str); if (p.seen.get(id) !== str) changed.push(str); }
+      const gone = [];
+      for (const id of p.seen.keys()) if (!seen.has(id)) gone.push(id);
+      p.seen = seen;
+      if (changed.length || gone.length || tickN % 20 === 0) p.ws.send(`{"t":"s","d":1,"e":[${changed.join(',')}],"r":[${gone.join(',')}],"tm":${now}}`);
     }
-    for (const m of p.z.mobs.values()) {
-      if (m.dead || Math.abs(m.x - p.x) > VX || Math.abs(m.y - p.y) > VY) continue;
-      ents.push({ i: m.id, k: 'm', s: m.type, x: m.x, y: m.y, f: m.f, h: m.hp, mh: m.mh, l: m.lvl, st: m.stunUntil > now ? 1 : 0, fx: fxIds(m) });
-    }
-    for (const d of p.z.drops.values()) {
-      if (Math.abs(d.x - p.x) > VX || Math.abs(d.y - p.y) > VY) continue;
-      ents.push({ i: d.id, k: 'd', x: d.x, y: d.y, g: d.gold ? 1 : 0, b: d.item ? d.item.b : '', r: d.item ? d.item.r : 0, cl: d.item ? d.item.cl || '' : '', n: d.item ? d.item.n : `${d.gold} gold` });
-    }
-    send(p, { t: 's', e: ents, tm: now });
     if (p.dirty) { send(p, meMsg(p)); p.dirty = false; }
   }
 }
 
 function tick() {
+  const t0 = performance.now();
   const now = Date.now();
   tickN++;
   for (const p of players.values()) {
@@ -1521,16 +1567,26 @@ function tick() {
       if (rate && p.hp < p.st.mh) { p.hp = Math.min(p.st.mh, p.hp + Math.max(1, Math.round(p.st.mh * rate))); p.dirty = true; }
     }
   }
+  let awake = 0;
   for (const z of zones.values()) {
     if (z !== overworld && z.emptyAt) continue; // an empty instance sleeps until its timeout
-    for (const m of z.mobs.values()) { if (!m.dead) tickFx(m, now); mobAI(m, now); }
+    // monsters with nobody within 48 tiles (and not in a fight or walking home) sleep: an idle world costs almost nothing
+    const near = [...players.values()].filter((q) => q.z === z);
+    for (const m of z.mobs.values()) {
+      if (!m.dead && !m.returning && !m.target && !near.some((q) => Math.abs(q.x - m.x) <= 48 && Math.abs(q.y - m.y) <= 48)) continue;
+      awake++;
+      if (!m.dead) tickFx(m, now);
+      mobAI(m, now);
+    }
     for (const d of z.drops.values()) if (now > d.exp) z.drops.delete(d.id);
   }
+  awakeMobs = awake;
   runTimers(now);
   if (tickN % 20 === 0) reapInstances(now);
   if (tickN % 10 === 0) checkTrades();
   if (tickN % 2 === 0) broadcast(now);
   if (tickN % 10 === 0) partyTick();
+  tickMs = tickMs * 0.95 + (performance.now() - t0) * 0.05;
 }
 
 // ---------------------------------------------------------------- http + ws
@@ -1540,7 +1596,7 @@ const server = http.createServer((req, res) => {
   if (url === '/') url = '/client/index.html';
   if (url === '/api/status') {
     res.writeHead(200, { 'content-type': 'application/json' });
-    return res.end(JSON.stringify({ name: 'eldermoor', online: players.size, parties: parties.size, instances: instances.size, trades: trades.size, mobs: liveMobs(overworld).length, uptime: Math.round(process.uptime()) }));
+    return res.end(JSON.stringify({ name: 'eldermoor', online: players.size, parties: parties.size, instances: instances.size, trades: trades.size, mobs: liveMobs(overworld).length, awake: awakeMobs, tickMs: Math.round(tickMs * 100) / 100, uptime: Math.round(process.uptime()) }));
   }
   if (!url.startsWith('/client/') && !url.startsWith('/shared/')) { res.writeHead(404); return res.end('not found'); }
   const file = path.join(ROOT, url);

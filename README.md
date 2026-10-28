@@ -9,7 +9,7 @@ every sprite, tile, tree and icon is drawn in code (`client/sprites.js`, `client
 cd D:\ai-studio\eldermoor
 npm install
 npm start            # http://localhost:3000  (set PORT to change)
-npm test             # headless tests: world/regions/quests/shops, jobs/progression, gear/looks/migration, solo loop, party, dungeon + boss, trading incl. dupe attacks (own save files)
+npm test             # headless tests: scale (sleeping mobs, delta packets, loot locks), world/regions/quests/shops, jobs/progression, gear/looks/migration, solo loop, party, dungeon + boss, trading incl. dupe attacks (own save files)
 ```
 
 Open the URL in several tabs to play together. Heroes persist in `data/saves.json`.
@@ -22,6 +22,8 @@ Open the URL in several tabs to play together. Heroes persist in `data/saves.jso
 | Click ground / monster / NPC / loot | path there, attack, talk, pick up |
 | 1-6 | your skill bar (3 slots at start, 4/5/6 at levels 10/20/30) |
 | N (or click the minimap) | world map |
+| L | quest log |
+| H / Esc | menu: sound, volume, damage numbers, monster names, screen shake, controls |
 | C / J / K | hero window: stats and attributes / jobs / skills (the Look tab changes your appearance) |
 | Q | health potion |
 | Space / Tab | target nearest enemy |
@@ -49,6 +51,7 @@ Open the URL in several tabs to play together. Heroes persist in `data/saves.jso
 - Shop, 5-step quest chain, global chat, day/night with torchlight.
 - Parties of up to 4: shared XP (with a group bonus) and quest credit for everyone in range, party frames, minimap dots, party chat.
 - **Player trading**: both sides offer up to 6 items + gold, both lock, both confirm. Any change unlocks everyone; the swap re-validates ownership, gold, range and pack space on the server, and cancels cleanly on disconnect, death, zone change or distance. Pack changes are frozen mid-trade.
+- **Built to scale on a small server**: monsters live in a spatial grid, monsters far from every player sleep (an idle world costs about 0.1 ms per tick), and the browser client receives only the entities that changed (about 4% of the bandwidth of full snapshots in a busy meadow). Fresh loot is reserved for the heroes and parties who fought for it for 8 seconds (15 for bosses).
 - Server-authoritative: movement, combat, loot and economy all validated server-side.
 
 ## Layout

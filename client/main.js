@@ -64,7 +64,8 @@ function beep(freq, dur, type = 'square', vol = 0.04, slide = 0, delay = 0) {
   const o = actx.createOscillator(), g = actx.createGain();
   o.type = type; o.frequency.setValueAtTime(freq, t);
   if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, freq + slide), t + dur);
-  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  const lv = vol * (settings.vol / 0.7);
+  g.gain.setValueAtTime(Math.max(0.0002, lv), t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
   o.connect(g).connect(actx.destination); o.start(t); o.stop(t + dur + 0.02);
 }
 const sfx = {
@@ -99,7 +100,7 @@ const skillURL = (id) => { const k = `sk${id}`; if (!urlCache.has(k)) urlCache.s
 function connect(name, pass, cls, look) {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   ws = new WebSocket(`${proto}://${location.host}/ws`);
-  ws.onopen = () => ws.send(JSON.stringify({ t: 'login', name, pass, cls, look }));
+  ws.onopen = () => ws.send(JSON.stringify({ t: 'login', name, pass, cls, look, delta: true }));
   ws.onmessage = (e) => onMsg(JSON.parse(e.data));
   ws.onclose = (e) => {
     if (inGame) { $('dcWhy').textContent = e.reason || 'Connection lost.'; $('dc').classList.remove('hidden'); }
@@ -174,6 +175,15 @@ function applyState(m) {
     Object.assign(o, e, { seen: packetN });
     if (o.k === 'p' && o.d && !wasD && o.i !== myId) o.rx = o.x;
   }
+  if (m.d) { // delta packet: only changed entities arrived; `r` lists the ones that left view
+    for (const id of m.r) {
+      const o = ents.get(id);
+      if (!o || (o.dying && now() - o.dying < 700)) continue;
+      if (o.k === 'm' && !o.dying) { o.dying = now(); continue; }
+      ents.delete(id);
+    }
+    return;
+  }
   for (const [id, o] of ents) {
     if (o.seen === packetN) continue;
     if (o.dying && now() - o.dying < 700) continue;
@@ -197,10 +207,10 @@ function onEvent(m) {
       const [px, py] = tc(m.x, m.y);
       if (m.k === 'x' || m.k === 'a') { floaters.push({ x: px, y: py - 8, txt: m.k === 'x' ? 'Miss' : 'Absorbed', col: m.k === 'x' ? '#b8b8c8' : '#ffe8a0', t0: t }); break; }
       const col = m.k === 'p' ? '#ff5a5a' : m.k === 'h' ? '#6aff8a' : m.k === 'c' ? '#ffe066' : m.k === 'd' ? '#ff9a3a' : '#ffffff';
-      floaters.push({ x: px + (Math.random() * 8 - 4), y: py - 8, txt: m.k === 'h' ? `+${m.v}` : m.k === 'c' ? `${m.v}!` : `${m.v}`, col, t0: t, big: m.k === 'c' });
+      if (settings.dmg) floaters.push({ x: px + (Math.random() * 8 - 4), y: py - 8, txt: m.k === 'h' ? `+${m.v}` : m.k === 'c' ? `${m.v}!` : `${m.v}`, col, t0: t, big: m.k === 'c' });
       const e = ents.get(m.id);
       if (e && m.k !== 'h') e.hitAt = t;
-      if (m.k === 'p') { burst(px, py, ['#ff5a5a', '#a02828'], 6, 28, 350); if (m.id === myId) { shake = 4; sfx.hurt(); if (touchMode && navigator.vibrate) navigator.vibrate(25); } }
+      if (m.k === 'p') { burst(px, py, ['#ff5a5a', '#a02828'], 6, 28, 350); if (m.id === myId) { if (settings.shake) shake = 4; sfx.hurt(); if (touchMode && navigator.vibrate) navigator.vibrate(25); } }
       else if (m.k === 'm' || m.k === 'c') { burst(px, py, ['#fff', '#ffe066'], m.k === 'c' ? 10 : 5, 30, 260); (m.k === 'c' ? sfx.crit : sfx.hit)(); }
       break;
     }
@@ -249,6 +259,7 @@ function levelColor(l) {
 
 function stepEntities(dt, t) {
   for (const o of ents.values()) {
+    if (o.dying && t - o.dying > 700) { ents.delete(o.i); continue; }
     if (o.k !== 'p' && o.k !== 'm') { o.rx = o.x; o.ry = o.y; continue; }
     const dx = o.x - o.rx, dy = o.y - o.ry;
     if (Math.abs(dx) + Math.abs(dy) > 5) { o.rx = o.x; o.ry = o.y; }
@@ -401,6 +412,8 @@ addEventListener('keydown', (e) => {
   else if (k.length === 1 && k >= '1' && k <= '6') tx({ t: 'skill', n: Number(k) });
   else if (k === 'c') toggleChar();
   else if (k === 'n' && !pendingInvite) toggleMap();
+  else if (k === 'l') toggleQlog();
+  else if (k === 'h' || k === 'f1') { toggleMenu(); e.preventDefault(); }
   else if (k === 'j') toggleChar('jobs');
   else if (k === 'k') toggleChar('skills');
   else if (k === 'q') quaff();
@@ -409,7 +422,7 @@ addEventListener('keydown', (e) => {
   else if (k === 'm') { muted = !muted; localStorage.setItem('em_mute', muted ? '1' : '0'); toast(muted ? 'Sound off' : 'Sound on'); }
   else if (k === 'tab' || k === ' ') cycleTarget();
   else if ((k === 'y' || k === 'n') && pendingInvite && !pendingInvite.menu) answerInvite(k === 'y');
-  else if (k === 'escape') { $('worldmap').classList.add('hidden'); if (pendingInvite && pendingInvite.menu) { pendingInvite = null; showInvite(); } if (tradeView) tx({ t: 'trade_cancel' }); closeDialog(); $('inv').classList.add('hidden'); tx({ t: 'target', id: 0 }); goal = null; }
+  else if (k === 'escape') { if (escapeMenu()) return; $('worldmap').classList.add('hidden'); if (pendingInvite && pendingInvite.menu) { pendingInvite = null; showInvite(); } if (tradeView) tx({ t: 'trade_cancel' }); closeDialog(); $('inv').classList.add('hidden'); tx({ t: 'target', id: 0 }); goal = null; }
 });
 addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
 addEventListener('blur', () => keys.clear());
@@ -530,6 +543,68 @@ function renderParty() {
   if (party.id) {
     const lv = document.createElement('button'); lv.textContent = 'Leave party'; lv.style.fontSize = '7px'; lv.onclick = () => tx({ t: 'pleave' }); el.appendChild(lv);
   }
+}
+
+
+// ---- settings, help menu and quest log
+let settings = { vol: 0.7, dmg: true, names: true, shake: true };
+try { settings = { ...settings, ...JSON.parse(localStorage.getItem('em_settings') || '{}') }; } catch { /* private mode */ }
+const saveSettings = () => { try { localStorage.setItem('em_settings', JSON.stringify(settings)); localStorage.setItem('em_mute', muted ? '1' : '0'); } catch { /* ignore */ } };
+const isOpen = (id) => !$(id).classList.contains('hidden');
+function toggleMenu() { $('qlog').classList.add('hidden'); $('menu').classList.toggle('hidden'); if (isOpen('menu')) renderMenu(); }
+function toggleQlog() { $('menu').classList.add('hidden'); $('qlog').classList.toggle('hidden'); if (isOpen('qlog')) renderQlog(); }
+function escapeMenu() {
+  for (const id of ['menu', 'qlog']) if (isOpen(id)) { $(id).classList.add('hidden'); return true; }
+  const open = ['inv', 'char', 'dialog', 'worldmap', 'trade'].some(isOpen);
+  if (!open && !(me && me.tg) && !goal) { toggleMenu(); return true; }
+  return false;
+}
+function renderMenu() {
+  const box = $('menu'); box.innerHTML = '';
+  const head = mkEl('div', 'row', '<b>Menu</b>'); const x = mkEl('button', 'x', 'x'); x.onclick = () => box.classList.add('hidden'); head.appendChild(x);
+  box.appendChild(head);
+  box.appendChild(mkEl('h4', '', 'Settings'));
+  const toggle = (label, key, after) => {
+    const row = mkEl('div', 'setrow', `<span>${label}</span>`); const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = !!settings[key];
+    cb.onchange = () => { settings[key] = cb.checked; saveSettings(); if (after) after(); }; row.appendChild(cb); box.appendChild(row);
+  };
+  const snd = mkEl('div', 'setrow', '<span>Sound</span>'); const sc = document.createElement('input'); sc.type = 'checkbox'; sc.checked = !muted;
+  sc.onchange = () => { muted = !sc.checked; saveSettings(); }; snd.appendChild(sc); box.appendChild(snd);
+  const vol = mkEl('div', 'setrow', '<span>Volume</span>'); const vr = document.createElement('input'); vr.type = 'range'; vr.min = 0; vr.max = 100; vr.value = Math.round(settings.vol * 100);
+  vr.oninput = () => { settings.vol = vr.value / 100; saveSettings(); }; vr.onchange = () => sfx.click(); vol.appendChild(vr); box.appendChild(vol);
+  toggle('Floating damage numbers', 'dmg');
+  toggle('Monster names (always shown for your target)', 'names');
+  toggle('Screen shake when hit', 'shake');
+  const btns = mkEl('div', 'btnrow'); const ql = mkEl('button', '', 'Quest log (L)'); ql.onclick = () => toggleQlog();
+  const mp = mkEl('button', '', 'World map (N)'); mp.onclick = () => { box.classList.add('hidden'); toggleMap(); };
+  const rl = mkEl('button', '', 'Log out'); rl.onclick = () => location.reload(); btns.append(ql, mp, rl); box.appendChild(btns);
+  box.appendChild(mkEl('h4', '', 'Controls'));
+  const keys = [
+    ['WASD / arrows', 'walk'], ['Click ground', 'walk there'], ['Click monster', 'target + attack'], ['Click NPC', 'talk'],
+    ['Click a hero', 'party / trade'], ['1-6', 'skills'], ['Q', 'health potion'], ['Space / Tab', 'next target'],
+    ['E', 'talk / use portal'], ['C J K', 'hero: stats, jobs, skills'], ['I', 'pack'], ['L', 'quest log'],
+    ['N', 'world map'], ['Enter', 'chat (/help)'], ['H or Esc', 'this menu'], ['M', 'mute'],
+  ];
+  box.appendChild(mkEl('div', 'keys', keys.map(([k, v]) => `<div><b>${k}</b> ${v}</div>`).join('')));
+}
+function townOfNpc(id) {
+  const n = NPCS.find((q) => q.id === id);
+  if (!n) return '';
+  return TOWNS.slice().sort((a, b) => Math.hypot(a.cx - n.x, a.cy - n.y) - Math.hypot(b.cx - n.x, b.cy - n.y))[0].name;
+}
+function renderQlog() {
+  const box = $('qlog'); box.innerHTML = '';
+  const head = mkEl('div', 'row', '<b>Quest log</b>'); const x = mkEl('button', 'x', 'x'); x.onclick = () => box.classList.add('hidden'); head.appendChild(x);
+  box.appendChild(head);
+  if (!me) return;
+  const q = me.quest;
+  box.appendChild(mkEl('div', 'small', `${Math.min(q.i, QUESTS.length)} of ${QUESTS.length} quests complete. One quest at a time; the next giver may be in another town.`));
+  QUESTS.forEach((Q, i) => {
+    const state = i < q.i ? 'done' : i === q.i ? 'cur' : 'lock';
+    const g = NPCS.find((n) => n.id === Q.giver);
+    const prog = state === 'cur' ? (q.s === 0 ? '<span style="color:#ffe066">Not accepted yet</span>' : q.s === 1 ? `<span style="color:#ffe066">Slay ${q.p}/${Q.need}</span>` : '<span style="color:#6aff8a">Ready to turn in</span>') : state === 'done' ? '<span style="color:#6aff8a">Complete</span>' : 'Locked';
+    box.appendChild(mkEl('div', `qrow ${state}`, `<b>${esc(Q.title)}</b> &middot; ${prog}<div class="ds">${state === 'lock' ? '' : `Slay ${Q.need} ${esc(MOBS[Q.mob].name)}${Q.need > 1 ? 's' : ''} &middot; `}${g ? `${esc(g.name)}, ${esc(townOfNpc(Q.giver))}` : ''} &middot; ${Q.xp} XP, ${Q.gold}g${Q.reward ? ', epic gear' : ''}</div>`));
+  });
 }
 
 // ---- regions and the world map
@@ -663,6 +738,7 @@ function onMe() {
   if (!$('inv').classList.contains('hidden')) renderInv();
   if (tradeView) renderTrade();
   renderChar();
+  if (isOpen('qlog')) renderQlog();
   const tg = me.tg && ents.get(me.tg);
   $('targetFrame').classList.toggle('hidden', !tg);
 }
@@ -966,7 +1042,7 @@ function drawEntity(o, t, tgId) {
   if (o.fx && o.fx.length) o.fx.slice(0, 6).forEach((id, i) => { wx.fillStyle = EFFECTS[id] ? EFFECTS[id].col : '#fff'; wx.fillRect(Math.round(cx - o.fx.length * 2) + i * 4, py - 7, 3, 3); });
   const name = o.k === 'p' ? o.n : mobDef(o).name;
   const col = o.k === 'p' ? (o.i === myId ? '#8be88b' : inParty(o.i) ? '#6ab8ff' : '#ffffff') : levelColor(o.l);
-  labels.push({ x: cx, y: py - (o.k === 'm' && (o.h < o.mh || o.i === tgId) ? 5 : 2), txt: o.k === 'p' ? name : `${name}  ${o.l}`, col, boss: !!mobDef(o).boss });
+  if (o.k !== 'm' || settings.names || o.i === tgId || mobDef(o).boss) labels.push({ x: cx, y: py - (o.k === 'm' && (o.h < o.mh || o.i === tgId) ? 5 : 2), txt: o.k === 'p' ? name : `${name}  ${o.l}`, col, boss: !!mobDef(o).boss });
   if (o.say && t - o.sayAt < 5000) labels.push({ x: cx, y: py - 14, txt: o.say, col: '#ffffff', bubble: true });
 }
 
@@ -1351,6 +1427,7 @@ addEventListener('touchstart', enableTouch, { once: true, passive: true }); // h
   const acts = {
     pack: toggleInv,
     char: () => toggleChar(),
+    menu: () => toggleMenu(),
     talk: interact,
     tgt: cycleTarget,
     chat: () => { $('chat').classList.add('open'); $('chatIn').focus(); },

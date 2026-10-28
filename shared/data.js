@@ -149,7 +149,7 @@ NPCS.push(
 // ---- quest chain: every quest names its giver (NPC id); the next one may be in another town
 QUESTS.forEach((q) => { q.giver = 1; });
 const Q = (title, mob, need, giver, text, extra = {}) => ({
-  title, mob, need, giver, text, xp: Math.round(need * MOBS[mob].xp * 1.3), gold: Math.round(need * MOBS[mob].gold[1] * 3), ...extra,
+  title, mob, need, giver, text, xp: Math.round(need * MOBS[mob].xp * 1.3), gold: Math.round(Math.max(need * MOBS[mob].gold[1] * 3, extra.reward ? need * MOBS[mob].xp * 0.35 : 0)), ...extra,
 });
 QUESTS.push(
   Q('Scarab Swarm', 'scarab', 10, 11, 'Cross the east bridge to Dunehaven and speak to me. The dunes are crawling with scarabs. Clear ten.'),
