@@ -1,7 +1,7 @@
 // Procedural pixel art. Every sprite is built pixel-by-pixel on a small grid, given a
 // two-tone bevel shade and a 1px dark outline, then cached as a canvas.
 import { hash2 } from '/shared/world.js';
-import { SKILLS } from '/shared/jobs.js';
+import { SKILLS, JOBS } from '/shared/jobs.js';
 import { SKIN_TONES, HAIR_STYLES, HAIR_COLORS, EYE_COLORS, defaultColor } from '/shared/gear.js';
 
 const hex = (h) => { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
@@ -35,6 +35,24 @@ export class Grid {
   line(x0, y0, x1, y1, c) {
     const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0)) || 1;
     for (let i = 0; i <= n; i++) this.set(Math.round(x0 + ((x1 - x0) * i) / n), Math.round(y0 + ((y1 - y0) * i) / n), c);
+  }
+
+  /** inner form shading: the right end of every horizontal run of one colour is a shade darker, the left end lighter */
+  relief() {
+    const out = this.d.slice();
+    for (let y = 0; y < this.h; y++) {
+      let x = 0;
+      while (x < this.w) {
+        const c = this.get(x, y);
+        if (!c) { x++; continue; }
+        let e = x;
+        while (e + 1 < this.w && this.get(e + 1, y) === c) e++;
+        if (e - x >= 2) { out[y * this.w + e] = adj(c, 0.84); out[y * this.w + x] = adj(c, 1.1); }
+        x = e + 1;
+      }
+    }
+    this.d = out;
+    return this;
   }
   /** bevel: darker on right/bottom silhouette edges, lighter on top/left */
   shade() {
@@ -168,6 +186,75 @@ function bodyDetail(g, o, side) {
   else if (o.bk === 'plate') { if (!side) { g.rect(3, 7, 2, 2, lt); g.rect(11, 7, 2, 2, lt); g.rect(7, 7, 2, 3, lt); g.rect(5, 9, 6, 1, dk); } else { g.rect(6, 7, 2, 2, lt); g.rect(7, 9, 2, 1, dk); } }
 }
 
+
+// ------------------------------------------------------------------ class identity: every job keeps a signature silhouette
+// whatever it wears, so a Paladin in a leather vest is still readably a Paladin.
+const JOB_EYE = { warlock: '#ff6aff', necromancer: '#7affc8' };
+const RED = '#c03a3a', BONE = '#e6e2cc', GOLD = '#e8c04a';
+function accent(g, o, dir) {
+  const J = JOBS[o.job];
+  if (!J) return;
+  const c = J.color, cd = adj(c, 0.7), front = dir === 0, back = dir === 1, side = dir >= 2;
+  const pauldrons = (col) => {
+    const hi = adj(col, 1.3);
+    if (!side) { g.rect(3, 6, 2, 2, col); g.rect(11, 6, 2, 2, col); g.set(3, 6, hi); g.set(11, 6, hi); g.set(4, 7, adj(col, 0.75)); g.set(12, 7, adj(col, 0.75)); }
+    else { g.rect(6, 6, 3, 2, col); g.set(6, 6, hi); g.set(8, 7, adj(col, 0.75)); }
+  };
+  switch (o.job) {
+    case 'warrior':
+      pauldrons('#aab2c0');
+      if (front) { g.rect(7, 7, 2, 1, RED); g.set(7, 8, RED); g.set(8, 8, adj(RED, 0.7)); } // tabard knot
+      break;
+    case 'paladin':
+      pauldrons('#d8c070');
+      if (!side) { g.set(3, 2, '#fff2a0'); g.set(12, 2, '#fff2a0'); g.set(3, 1, adj('#fff2a0', 0.8)); g.set(12, 1, adj('#fff2a0', 0.8)); } // winged helm
+      if (front) { g.rect(7, 7, 2, 4, GOLD); g.rect(6, 8, 4, 1, GOLD); g.set(7, 8, '#fff2a0'); }
+      else if (side) g.rect(7, 7, 1, 3, GOLD);
+      break;
+    case 'mage':
+      if (!side) for (let x = 4; x < 12; x += 2) g.set(x, 13, GOLD); else for (let x = 5; x < 11; x += 2) g.set(x, 13, GOLD);
+      if (front) { g.set(7, 8, '#9fe8ff'); g.set(8, 8, '#e8f8ff'); }
+      break;
+    case 'ranger':
+      if (front) { g.rect(6, 7, 4, 1, c); g.set(9, 8, cd); }
+      else if (side) g.rect(7, 7, 2, 1, c);
+      g.set(11, 0, '#f0f0e8'); g.set(11, 1, '#f0f0e8'); g.set(12, 1, c); // hood feather
+      break;
+    case 'cleric':
+      g.rect(5, 0, 6, 1, '#ffe88a'); g.set(4, 1, '#ffe88a'); g.set(11, 1, '#ffe88a'); // halo
+      if (front) { g.rect(7, 8, 2, 3, '#ffffff'); g.rect(7, 9, 2, 1, GOLD); }
+      break;
+    case 'rogue':
+      if (front) g.rect(5, 6, 6, 1, '#2a2a3a'); else if (side) g.rect(8, 6, 3, 1, '#2a2a3a');
+      if (!side) { g.set(11, 8, RED); g.set(12, 9, RED); g.set(12, 10, adj(RED, 0.7)); } else { g.set(5, 8, RED); g.set(4, 9, RED); } // scarf tails
+      break;
+    case 'warlock':
+      if (front) g.rect(7, 10, 2, 1, BONE); // skull buckle
+      break;
+    case 'druid':
+      pauldrons('#5a9a4a');
+      if (!side) { for (const [x, y] of [[4, 0], [3, 0], [3, 1], [11, 0], [12, 0], [12, 1]]) g.set(x, y, '#c8a870'); } else { g.set(8, 0, '#c8a870'); g.set(9, 0, '#c8a870'); g.set(9, 1, '#c8a870'); } // antlers
+      break;
+    case 'necromancer':
+      pauldrons('#d8d4bc');
+      if (front) { g.set(7, 8, '#16121f'); g.set(8, 8, '#16121f'); g.set(7, 9, BONE); g.set(8, 9, BONE); }
+      break;
+    case 'monk':
+      g.rect(5, 3, 6, 1, RED); g.set(11, 3, RED); g.set(12, 4, RED); // headband and tails
+      if (front) g.line(5, 7, 9, 10, '#7a2a1a');
+      break;
+    default:
+  }
+}
+/** floating motes, painted after the outline so they stay single pixels */
+function accentFx(g, o, dir) {
+  const dot = (x, y, col) => { if (!g.get(x, y)) g.set(x, y, col); };
+  if (o.job === 'warlock') { dot(2, 4, '#d060d0'); dot(13, 7, '#a03aa0'); dot(1, 9, '#7a2a7a'); }
+  else if (o.job === 'necromancer') { dot(2, 3, '#7affc8'); dot(13, 6, '#7affc8'); dot(2, 9, '#4aa890'); }
+  else if (o.job === 'mage') { dot(13, 3, '#9fe8ff'); dot(14, 5, '#ffffff'); }
+  else if (o.job === 'druid') { dot(2, 5, '#9aff8a'); dot(13, 9, '#6aaa4a'); }
+}
+
 /** dir: 0 down, 1 up, 2 left, 3 right; fr: 0..3 walk cycle */
 function humanoid(o, dir, fr) {
   const g = new Grid(16, 16);
@@ -237,10 +324,12 @@ function humanoid(o, dir, fr) {
     if (dir !== 1) g.set(8, 1, '#5fd3ff');
   }
 
-  g.shade();
+  g.relief().shade();
+  if (o.job) accent(g, o, side ? 3 : dir);
 
   // details painted after shading so they stay crisp
   const eye = o.eye || '#1a1a2a';
+  if (dir === 0 && !o.beard && o.job !== 'rogue') { g.set(7, 6, adj(o.skin, 0.62)); g.set(8, 6, adj(o.skin, 0.62)); } // mouth
   if (dir === 0) { g.set(6, 5, eye); g.set(9, 5, eye); if (o.beard) { g.rect(6, 6, 4, 2, o.beard); g.set(7, 5, o.beard); g.set(8, 5, o.beard); g.rect(5, 5, 1, 2, o.beard); g.rect(10, 5, 1, 2, o.beard); } }
   if (dir === 3) { g.set(9, 5, eye); if (o.beard) g.rect(8, 6, 3, 2, o.beard); }
   if (dir === 2) { g.set(6, 5, eye); if (o.beard) g.rect(5, 6, 3, 2, o.beard); }
@@ -274,7 +363,9 @@ function humanoid(o, dir, fr) {
     else if (dir === 0) { g.rect(11, 4, 1, 4, q); g.set(11, 3, '#e8e8e8'); }
     else { g.rect(5, 3, 2, 7, q); g.set(5, 2, '#e8e8e8'); g.set(6, 2, '#cc3a3a'); }
   }
-  return g.outline().canvas(dir === 2);
+  g.outline();
+  if (o.job) accentFx(g, o, side ? 3 : dir);
+  return g.canvas(dir === 2);
 }
 
 const PRESET = {
@@ -313,7 +404,7 @@ const memo = (k, f) => { let v = cache.get(k); if (!v) { v = f(); cache.set(k, v
 // ------------------------------------------------------------------ player characters: appearance + worn gear
 const HERO_BODY = { robe: { robe: true }, tunic: {}, vest: { bk: 'leather' }, mail: { bk: 'mail' }, plate: { bk: 'plate' } };
 const HERO_HAT = { cap: 'cap', hood: 'hood', helm: 'helm', crown: 'crown', horns: 'horns', circlet: 'circlet', wizhat: 'wizard' };
-function heroOptions(lk, vs) {
+function heroOptions(lk, vs, job = '') {
   const tok = (i) => { const [b, cl, r] = (vs[i] || '').split('~'); return b ? { b, cl: cl || defaultColor(b), r: Number(r) || 0 } : null; };
   const head = tok(0), body = tok(1), legs = tok(2), boots = tok(3), gloves = tok(4), cape = tok(5), off = tok(6), wep = tok(7);
   const o = {
@@ -321,6 +412,7 @@ function heroOptions(lk, vs) {
     tunic: body ? body.cl : '#d8d0c0', pants: legs ? legs.cl : '#6a5a4a', boots: boots ? boots.cl : '#4a3a2a', belt: '#3a2a1a', hat: 'none',
     weapon: wep ? wep.b : null, blade: BLADE[wep ? wep.r : 0],
   };
+  if (job) { o.job = job; if (JOB_EYE[job]) o.eye = JOB_EYE[job]; }
   if (body) Object.assign(o, HERO_BODY[body.b] || {});
   if (body && body.b === 'plate') o.sleeve = adj(body.cl, 1.15);
   if (head) { o.hat = HERO_HAT[head.b] || 'cap'; o.hatCol = head.cl; }
@@ -332,13 +424,14 @@ function heroOptions(lk, vs) {
   return o;
 }
 /** lk = [skin, hairStyle, hairColour, eyes], vs = worn-gear tokens "kind~dye~rarity" in VIS_ORDER */
-export function heroSprite(lk, vs, dir, fr) {
-  return memo(`h${lk.join('')}|${vs.join(',')}|${dir}${fr}`, () => humanoid(heroOptions(lk, vs), dir, fr));
+export function heroSprite(lk, vs, dir, fr, job = '') {
+  return memo(`h${lk.join('')}|${vs.join(',')}|${dir}${fr}${job}`, () => humanoid(heroOptions(lk, vs, job), dir, fr));
 }
 
 export function playerSprite(cls, skin, dir, fr, wb = '', wr = 0, ar = -1) {
   return memo(`p${cls}${skin}${dir}${fr}${wb}${wr}${ar}`, () => {
-    const o = { ...PRESET[cls], skin: SKINS[skin % SKINS.length], blade: BLADE[wr] };
+    const o = { ...PRESET[cls], skin: SKINS[skin % SKINS.length], blade: BLADE[wr], job: cls };
+    if (JOB_EYE[cls]) o.eye = JOB_EYE[cls];
     if (wb) o.weapon = wb === 'armor' ? o.weapon : wb;
     if (ar > 0) o.trim = RARITY_COL[ar];
     return humanoid(o, dir, fr);

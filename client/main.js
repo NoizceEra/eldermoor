@@ -774,7 +774,7 @@ let lookDraft = null;
 function lookTab(body) {
   if (!lookDraft) lookDraft = [...me.look];
   const cv = document.createElement('canvas'); cv.width = 16; cv.height = 16; cv.className = 'bigprev';
-  drawPrev(cv, lookDraft, visTokens(me.eq), 0);
+  drawPrev(cv, lookDraft, visTokens(me.eq), 0, 0, me.job);
   const rows = mkEl('div', 'lookrows');
   lookRows(rows, lookDraft, () => renderChar());
   const wrap = mkEl('div', 'creator'); wrap.append(cv, rows);
@@ -887,7 +887,7 @@ function renderInv() {
     d.onclick = () => { selSlot = -1; showInfo(it, () => { tx({ t: 'unequip', s }); }, 'Unequip', null); };
     eq.appendChild(d);
   }
-  drawPrev($('invPrev'), me.look, visTokens(me.eq), 0);
+  drawPrev($('invPrev'), me.look, visTokens(me.eq), 0, 0, me.job);
   const grid = $('slots'); grid.innerHTML = '';
   me.inv.forEach((it, i) => {
     const d = slotEl(it); if (i === selSlot) d.classList.add('sel');
@@ -979,6 +979,27 @@ function flashOf(spr) {
   if (!f) { f = SP.mkCanvas(spr.width, spr.height); const x = f.getContext('2d'); x.drawImage(spr, 0, 0); x.globalCompositeOperation = 'source-in'; x.fillStyle = '#fff'; x.fillRect(0, 0, f.width, f.height); flashCache.set(spr, f); }
   return f;
 }
+/** ground aura in the job's colour: grows with main level (rings at 10 / 30 / 50) */
+function heroAura(cx, cy, job, lvl, t, seed) {
+  const tier = lvl >= 50 ? 3 : lvl >= 30 ? 2 : lvl >= 10 ? 1 : 0;
+  if (!tier || !JOBS[job]) return;
+  const col = JOBS[job].color, pulse = 0.55 + 0.2 * Math.sin(t / 420 + seed);
+  wx.fillStyle = col;
+  wx.globalAlpha = 0.14 + 0.05 * tier;
+  wx.fillRect(Math.round(cx - 8), Math.round(cy - 2), 16, 5); wx.fillRect(Math.round(cx - 6), Math.round(cy - 3), 12, 7);
+  wx.globalAlpha = pulse;
+  for (let a = 0; a < 6.283; a += 0.42) wx.fillRect(Math.round(cx + Math.cos(a) * 9), Math.round(cy + Math.sin(a) * 4), 1, 1);
+  if (tier >= 2) {
+    wx.globalAlpha = Math.min(1, pulse + 0.2);
+    const rot = t / 900 + seed;
+    for (let k = 0; k < 5; k++) { const a = rot + k * 1.2566; wx.fillRect(Math.round(cx + Math.cos(a) * 13), Math.round(cy + Math.sin(a) * 6), 2, 1); }
+  }
+  if (tier >= 3) { // legend: motes drift upward around the hero
+    wx.globalAlpha = 0.85; wx.fillStyle = '#ffffff';
+    for (let k = 0; k < 4; k++) { const ph = ((t / 1400 + k * 0.25 + seed) % 1), a = k * 1.7 + seed; wx.fillRect(Math.round(cx + Math.cos(a) * 8), Math.round(cy - ph * 18), 1, 1); }
+  }
+  wx.globalAlpha = 1;
+}
 function shadow(x, y, w) {
   wx.fillStyle = 'rgba(10,8,20,.38)';
   wx.fillRect(Math.round(x - w / 2 + 1), Math.round(y), w - 2, 1); wx.fillRect(Math.round(x - w / 2), Math.round(y + 1), w, 2); wx.fillRect(Math.round(x - w / 2 + 1), Math.round(y + 3), w - 2, 1);
@@ -1008,7 +1029,7 @@ function drawEntity(o, t, tgId) {
       return;
     }
     const fr = o.moving ? [1, 0, 3, 0][Math.floor(t / 110) % 4] : 0;
-    spr = SP.heroSprite(o.lk, o.vs, o.f, fr);
+    spr = SP.heroSprite(o.lk, o.vs, o.f, fr, o.c);
   } else {
     const fr = FLYERS.has(o.s) ? Math.floor(t / 110) % 2 : SLIMES.has(o.s) ? Math.floor(t / 320) % 2 : o.moving ? Math.floor(t / 160) % 2 : BIG.has(o.s) ? Math.floor(t / 600) % 2 : 0;
     spr = SP.mobSprite(o.s, o.f, HUMANOID.has(o.s) ? (o.moving ? [1, 0, 3, 0][Math.floor(t / 130) % 4] : 0) : fr);
@@ -1028,8 +1049,12 @@ function drawEntity(o, t, tgId) {
     wx.fillRect(x0 + 1, y0 + 14, 3, 1); wx.fillRect(x0 + 12 + pulse * 2, y0 + 14, 3, 1);
     wx.fillRect(x0, y0 + 13, 1, 2); wx.fillRect(x0 + 15 + pulse * 2, y0 + 13, 1, 2);
   }
+  if (o.k === 'p') heroAura(px + w / 2, py + spr.height - 2, o.c, o.l, t, o.i);
   wx.globalAlpha = fadeA;
-  wx.drawImage(spr, px, py);
+  if (o.k === 'p' && !o.moving && Math.floor(t / 520 + o.i) % 2) { // idle breathing: the torso settles one pixel onto the legs
+    wx.drawImage(spr, 0, 11, w, spr.height - 11, px, py + 11, w, spr.height - 11);
+    wx.drawImage(spr, 0, 0, w, 11, px, py + 1, w, 11);
+  } else wx.drawImage(spr, px, py);
   if (flash) { wx.globalAlpha = 0.65 * fadeA; wx.drawImage(flashOf(spr), px, py); }
   wx.globalAlpha = 1;
   if (o.k === 'm' && o.st) { wx.fillStyle = '#ffe066'; const sx = px + w / 2 - 4; for (let i = 0; i < 3; i++) wx.fillRect(sx + i * 3 + ((Math.floor(t / 100) + i) % 2), py - 3, 1, 1); }
@@ -1444,10 +1469,10 @@ function previewVis(job) {
   const kit = STARTER_KIT[job] || {}, t = (slot) => (kit[slot] ? `${kit[slot][0]}~${kit[slot][1]}~0` : '');
   return [t('head'), t('body'), t('legs'), t('boots'), '', '', t('offhand'), `${JOBS[job].start}~~0`];
 }
-function drawPrev(cv, look, vs, dir = 0, fr = 0) {
+function drawPrev(cv, look, vs, dir = 0, fr = 0, job = '') {
   const x = cv.getContext('2d');
   x.clearRect(0, 0, 16, 16);
-  x.drawImage(SP.heroSprite(look, vs, dir, fr), 0, 0);
+  x.drawImage(SP.heroSprite(look, vs, dir, fr, job), 0, 0);
 }
 const LOOK_PAL = [SKIN_TONES, null, HAIR_COLORS, EYE_COLORS];
 function lookRows(box, look, onChange) {
@@ -1466,7 +1491,7 @@ function lookRows(box, look, onChange) {
 const prevCv = $('prev');
 function buildCreator() {
   lookRows($('lookRows'), selLook, buildCreator);
-  drawPrev(prevCv, selLook, previewVis(selClass), prevDir);
+  drawPrev(prevCv, selLook, previewVis(selClass), prevDir, 0, selClass);
   try { localStorage.setItem('em_look', JSON.stringify(selLook)); } catch { /* private mode */ }
 }
 $('rnd').onclick = () => { selLook = LOOK_LIMITS.map((n) => Math.floor(Math.random() * n)); buildCreator(); };
