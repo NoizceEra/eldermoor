@@ -14,6 +14,11 @@ fs.mkdirSync('data', { recursive: true });
 fs.writeFileSync(SAVE, JSON.stringify({
   oldhero: { name: 'OldHero', salt, hash: crypto.scryptSync('x', salt, 32).toString('hex'), cls: 'ranger', lvl: 12, xp: 5, gold: 77,
     inv: Array(20).fill(null), eq: { weapon: null, armor: null, trinket: null }, quest: { i: 1, s: 0, p: 0 }, x: 64, y: 67, hp: 50 },
+  // saved before paladin/druid/necromancer/monk existed: its jobs table has only the original six
+  legacyhero: { v: 3, name: 'LegacyHero', salt, hash: crypto.scryptSync('x', salt, 32).toString('hex'), look: [0, 0, 0, 0], job: 'mage', lvl: 8, xp: 0, gold: 5,
+    jobs: { warrior: { lvl: 0, xp: 0 }, mage: { lvl: 6, xp: 0 }, ranger: { lvl: 0, xp: 0 }, cleric: { lvl: 0, xp: 0 }, rogue: { lvl: 0, xp: 0 }, warlock: { lvl: 0, xp: 0 } },
+    attr: { str: 0, dex: 0, int: 0, vit: 0, spr: 0 }, points: 0, bar: ['fireball', null, null, null, null, null],
+    inv: Array(20).fill(null), eq: {}, quest: { i: 0, s: 0, p: 0 }, x: 64, y: 67, hp: 50 },
 }));
 
 const srv = spawn(process.execPath, ['server/index.js'], { env: { ...process.env, PORT: String(PORT), EM_SAVE: SAVE, EM_DEBUG: '1' }, stdio: ['ignore', 'pipe', 'inherit'] });
@@ -47,7 +52,7 @@ if (!out.includes('listening')) fail('server did not start: ' + out);
 for (const [id, sk] of Object.entries(SKILLS)) {
   if (!JOBS[sk.job] || !sk.name || !sk.kind || !(sk.cd > 0) || !sk.ic || !sk.desc) fail(`skill ${id} is incomplete`);
 }
-ok(Object.keys(SKILLS).length === 36, '36 skills defined, 6 per job');
+ok(Object.keys(SKILLS).length === 60, '60 skills defined, 6 per job');
 for (const j of Object.keys(JOBS)) ok(Object.values(SKILLS).filter((s) => s.job === j).length === 6, `${j} has 6 skills`);
 
 // ---------------------------------------------------------------- new hero
@@ -134,6 +139,100 @@ ok(M.evs.filter((e) => e.e === 'cd' && e.id === 'fireball').length === 1, 'the s
 M.tx({ t: 'dbg', atkMul: 300 });
 for (let i = 0; i < 12 && M.ents.find((e) => e.i === slime.i); i++) { M.tx({ t: 'target', id: slime.i }); await wait(1300); }
 ok(M.me.jobs.mage.xp + M.me.jobs.mage.lvl * 100000 > jxp0 || M.me.jobs.mage.lvl >= 10, 'kills grant job experience');
+
+// ---------------------------------------------------------------- the four newer jobs
+const findSlime = async (b) => {
+  for (let round = 0; round < 3; round++) {
+    for (const [x, y] of [[64, 82], [60, 84], [68, 84], [64, 88], [56, 86], [72, 86], [64, 92], [50, 90], [80, 90], [58, 96], [70, 100]]) {
+      b.tx({ t: 'dbg', tp: [x, y] }); await wait(250);
+      const s = b.ents.find((e) => e.k === 'm' && e.s === 'slime' && Math.hypot(e.x - b.pos().x, e.y - b.pos().y) < 6);
+      if (s) return s;
+    }
+    await wait(1500);
+  }
+  return null;
+};
+const NEW = {};
+for (const [cls, first, weapon] of [['paladin', 'crusader', 'sword'], ['druid', 'moonfire', 'staff'], ['necromancer', 'deathbolt', 'wand'], ['monk', 'flurry', 'mace']]) {
+  NEW[cls] = await bot(`Job${cls}`, cls);
+  const b = NEW[cls];
+  ok(b.me.job === cls && b.me.bar[0] === first && b.me.eq.weapon.b === weapon && b.me.eq.body, `a new ${cls} starts with ${first}, a ${weapon} and a starter outfit`);
+  b.tx({ t: 'dbg', god: true, jobLvl: 20, lvl: 30 }); await wait(250);
+}
+const slotSkill = async (b, slot, skill) => { b.tx({ t: 'bar', slot, skill }); await wait(150); };
+
+// monk: Flurry of Blows lands three separate hits
+{
+  const b = NEW.monk, s = await findSlime(b);
+  ok(!!s, 'found a slime for the monk');
+  const p = b.pos();
+  b.tx({ t: 'dbg', tp: [s.x + 1, s.y] }); await wait(250);
+  b.tx({ t: 'dbg', atkMul: 0.01 }); b.tx({ t: 'target', id: s.i }); b.evs.length = 0;
+  b.tx({ t: 'skill', n: 1 }); await wait(300);
+  ok(b.evs.filter((e) => e.e === 'dmg' && e.id === s.i).length >= 3 || !b.ents.find((e) => e.i === s.i), 'Flurry of Blows hits three times');
+}
+
+// druid: Entangling Roots pins a monster in place
+{
+  const b = NEW.druid, s = await findSlime(b);
+  ok(!!s, 'found a slime for the druid');
+  await slotSkill(b, 1, 'entangle');
+  b.tx({ t: 'dbg', atkMul: 0.01 }); b.tx({ t: 'target', id: s.i }); b.evs.length = 0;
+  b.tx({ t: 'skill', n: 2 }); await wait(400);
+  const t = b.ents.find((e) => e.i === s.i);
+  ok(t && t.fx && t.fx.includes('root'), 'Entangling Roots roots the target');
+  const at = { x: t.x, y: t.y };
+  await wait(1500);
+  const t2 = b.ents.find((e) => e.i === s.i);
+  ok(t2 && t2.x === at.x && t2.y === at.y, 'a rooted monster does not move');
+}
+
+// paladin: Righteous Charge closes the distance and strikes
+{
+  const b = NEW.paladin, s = await findSlime(b);
+  ok(!!s, 'found a slime for the paladin');
+  await slotSkill(b, 1, 'charge');
+  b.tx({ t: 'dbg', atkMul: 0.01 });
+  let far = false;
+  for (const [dx, dy] of [[5, 0], [-5, 0], [0, 5], [0, -5], [4, 2], [-4, -2]]) {
+    b.tx({ t: 'dbg', tp: [s.x + dx, s.y + dy] }); await wait(250);
+    const q = b.pos(), m = b.ents.find((e) => e.i === s.i);
+    if (m && q && Math.hypot(m.x - q.x, m.y - q.y) > 3.5) { far = true; break; }
+  }
+  ok(far, 'stood a few tiles from the slime');
+  b.tx({ t: 'target', id: s.i }); b.evs.length = 0;
+  b.tx({ t: 'skill', n: 2 }); await wait(400);
+  const q = b.pos(), m = b.ents.find((e) => e.i === s.i);
+  ok((!m || Math.hypot(m.x - q.x, m.y - q.y) <= 1.6) && b.evs.some((e) => e.e === 'dmg' && e.id === s.i), 'Righteous Charge rushes in and hits');
+}
+
+// druid + necromancer: party regeneration and a rooting area spell
+{
+  const d = NEW.druid, n = NEW.necromancer;
+  d.tx({ t: 'pinvite', name: n.name }); await wait(300);
+  n.tx({ t: 'pgo', ok: true }); await wait(400);
+  await slotSkill(d, 2, 'wildgrowth');
+  d.tx({ t: 'dbg', tp: [64, 70] }); n.tx({ t: 'dbg', tp: [65, 70] }); await wait(400);
+  d.evs.length = 0;
+  d.tx({ t: 'skill', n: 3 }); await wait(500);
+  ok(d.me.fx.some((f) => f.id === 'regen') && n.me.fx.some((f) => f.id === 'regen'), 'Wild Growth puts regeneration on every nearby party member');
+  const s = await findSlime(n);
+  ok(!!s, 'found a slime for the necromancer');
+  await slotSkill(n, 1, 'boneprison');
+  n.tx({ t: 'dbg', atkMul: 0.01 });
+  n.tx({ t: 'dbg', tp: [s.x + 2, s.y] }); await wait(250);
+  n.tx({ t: 'skill', n: 2 }); await wait(400);
+  const q2 = n.pos();
+  ok(n.ents.some((e) => e.k === 'm' && Math.hypot(e.x - q2.x, e.y - q2.y) <= 3.6 && e.fx && e.fx.includes('root')), 'Bone Prison roots nearby enemies');
+}
+
+// a hero saved before the new jobs existed still switches into them
+{
+  const b = await bot('LegacyHero');
+  ok(b.me.job === 'mage' && b.me.jobs.monk && b.me.jobs.monk.lvl === 0, 'an old save gains the new jobs at level 0');
+  b.tx({ t: 'job', id: 'monk' }); await wait(300);
+  ok(b.me.job === 'monk' && b.me.jobs.monk.lvl === 1 && b.me.jobs.mage.lvl === 6, 'and can switch into one without losing the old job');
+}
 
 console.log('JOBS SMOKE OK');
 done(0);

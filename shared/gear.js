@@ -82,4 +82,8 @@ export const STARTER_KIT = {
   cleric: { head: ['cap', '#f0d060'], body: ['robe', '#f0f0e8'], legs: ['pants', '#c8b070'], boots: ['shoes', '#7a5a2a'] },
   rogue: { head: ['hood', '#2f2f3f'], body: ['vest', '#3a3a4a'], legs: ['pants', '#2a2a34'], boots: ['boots', '#1a1a22'] },
   warlock: { head: ['wizhat', '#3a1050'], body: ['robe', '#5a1f5a'], legs: ['pants', '#2a1030'], boots: ['shoes', '#1a1020'] },
+  paladin: { head: ['helm', '#d8d0a0'], body: ['plate', '#d8d0a0'], legs: ['greaves', '#aab2c0'], boots: ['sabatons', '#aab2c0'], offhand: ['shield', '#e8d88a'] },
+  druid: { head: ['hood', '#4f8f4f'], body: ['robe', '#4f7a3f'], legs: ['leggings', '#6a4a2a'], boots: ['shoes', '#5a3a22'] },
+  necromancer: { head: ['hood', '#2a3a3a'], body: ['robe', '#2f4a45'], legs: ['pants', '#1a2a28'], boots: ['shoes', '#1a2020'] },
+  monk: { body: ['vest', '#c8782a'], legs: ['pants', '#e8e0d0'], boots: ['shoes', '#e8e0d0'], gloves: ['wraps', '#c8782a'] },
 };

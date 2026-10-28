@@ -24,7 +24,7 @@ active. Job level gives that job's automatic attribute growth and unlocks that j
 bar slot while *any* job is active, so a Warrior can carry Mage's Frost Nova. The job only decides passive trait,
 auto growth, and who levels.
 
-**Jobs:** Warrior, Mage, Ranger, Cleric, Rogue, Warlock. Six skills each, learned at job levels 1/3/6/9/13/17.
+**Jobs:** Warrior, Mage, Ranger, Cleric, Rogue, Warlock, plus (later) Paladin, Druid, Necromancer, Monk. Six skills each, learned at job levels 1/3/6/9/13/17.
 
 **Attributes:** STR (melee power), DEX (bow/dagger power, crit, dodge, haste), INT (magic power), VIT (health), SPR
 (healing power, magic resistance). Weapon type decides which attribute your auto attack scales with, so a Cleric with a

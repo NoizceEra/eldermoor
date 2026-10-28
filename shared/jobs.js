@@ -32,7 +32,7 @@ export const WEAPON_TYPES = {
   none: { range: 1.5, ms: 900, scale: 'str', fx: 'swing', mag: false },
 };
 
-export const JOB_ORDER = ['warrior', 'mage', 'ranger', 'cleric', 'rogue', 'warlock'];
+export const JOB_ORDER = ['warrior', 'mage', 'ranger', 'cleric', 'rogue', 'warlock', 'paladin', 'druid', 'necromancer', 'monk'];
 export const JOBS = {
   warrior: {
     name: 'Warrior', role: 'Tank / melee', color: '#c03a3a', hpMul: 1.15, defMul: 1.1,
@@ -69,6 +69,30 @@ export const JOBS = {
     growth: { int: 0.55, vit: 0.3 }, start: 'wand', lifesteal: 0.08,
     desc: 'Trades in curses, pain and borrowed health. Hard to kill, harder to forget.',
     trait: 'Dark Bargain: heal for 8% of damage dealt.',
+  },
+  paladin: {
+    name: 'Paladin', role: 'Holy tank', color: '#e8d88a', hpMul: 1.1, defMul: 1.1,
+    growth: { str: 0.4, spr: 0.3, vit: 0.3 }, start: 'sword', healMul: 1.1,
+    desc: 'Armoured faith. Charges in, shrugs off blows and mends what the fight breaks.',
+    trait: 'Sworn Oath: +10% health, +10% defense, +10% healing, strong threat.',
+  },
+  druid: {
+    name: 'Druid', role: 'Nature healer', color: '#5fbf6a', hpMul: 1, defMul: 1,
+    growth: { spr: 0.5, int: 0.4 }, start: 'staff', healMul: 1.1, magMul: 1.1,
+    desc: 'Roots, moonlight and growing things. Heals over time and pins down whatever moves.',
+    trait: 'Wild Gift: +10% healing and +10% magic damage.',
+  },
+  necromancer: {
+    name: 'Necromancer', role: 'Death caster', color: '#7aa89a', hpMul: 0.95, defMul: 1,
+    growth: { int: 0.6, vit: 0.25 }, start: 'wand', magMul: 1.1, lifesteal: 0.05,
+    desc: 'Plague, bone and the cold patience of the grave. Wears enemies down while they are still standing.',
+    trait: 'Grave Chill: +10% magic damage, heal for 5% of damage dealt.',
+  },
+  monk: {
+    name: 'Monk', role: 'Melee combo', color: '#e8a050', hpMul: 1.05, defMul: 1,
+    growth: { dex: 0.5, vit: 0.25, spr: 0.2 }, start: 'mace', critAdd: 4, dodgeAdd: 6, moveHaste: 0.05,
+    desc: 'Bare-knuckled discipline. Fast chained strikes, stuns and a body that refuses to stay hit.',
+    trait: 'Inner Peace: +6% dodge, +4% crit chance, +5% movement speed.',
   },
 };
 
@@ -119,6 +143,34 @@ export const SKILLS = {
   terrify: { job: 'warlock', lvl: 9, name: 'Terrify', cd: 20000, kind: 'cc_aoe', r: 4, mult: 0.4, scale: 'int', fx: [['fear', 3000, 0]], vis: 'nova', col: '#a03aa0', ic: ['eye', '#c060c0'], desc: 'Nearby enemies flee in terror for 3s.' },
   soulburn: { job: 'warlock', lvl: 13, name: 'Soul Burn', cd: 12000, kind: 'ranged_st', range: 6, mult: 1.0, scale: 'int', mag: true, vis: 'shadow', fx: [['burn', 10000, 0.4]], ic: ['flame', '#b050ff'], desc: 'Burns the soul for 40% damage a second for 10s.' },
   pact: { job: 'warlock', lvl: 17, name: 'Dark Pact', cd: 40000, kind: 'sacrifice', hpPct: 0.2, fx: [['atkUp', 10000, 0.5]], vis: 'cry', ic: ['skull', '#ff3aff'], desc: 'Sacrifice 20% of your health for +50% damage for 10s.' },
+  // ---- Paladin
+  crusader: { job: 'paladin', lvl: 1, name: 'Crusader Strike', cd: 3000, kind: 'melee_st', range: 1.7, mult: 1.8, scale: 'str', vis: 'swing', ic: ['slash', '#ffe9a0'], desc: 'A blessed blow for 180% damage.' },
+  layhands: { job: 'paladin', lvl: 3, name: 'Lay on Hands', cd: 24000, kind: 'heal', range: 8, mult: 4.0, ic: ['cross', '#fff2a0'], vis: 'heal', desc: 'A powerful heal on you or the most wounded ally.' },
+  charge: { job: 'paladin', lvl: 6, name: 'Righteous Charge', cd: 14000, kind: 'charge', range: 6, mult: 1.3, scale: 'str', vis: 'dash', fx: [['stun', 1500, 0]], ic: ['horn', '#e8d88a'], desc: 'Rush a distant foe, strike for 130% and stun it for 1.5s.' },
+  consecrate: { job: 'paladin', lvl: 9, name: 'Consecration', cd: 12000, kind: 'aoe_self', r: 2.8, mult: 1.8, scale: 'spr', mag: true, vis: 'nova', col: '#ffe9a0', ic: ['sun', '#ffe9a0'], desc: 'Holy fire around you: 180% damage to everything nearby.' },
+  judgment: { job: 'paladin', lvl: 13, name: 'Judgment', cd: 15000, kind: 'ranged_st', range: 6, mult: 2.6, scale: 'spr', mag: true, vis: 'holy', fx: [['vuln', 8000, 0.2]], ic: ['eye', '#ffe066'], desc: '260% holy damage; the target takes 20% more damage for 8s.' },
+  avenger: { job: 'paladin', lvl: 17, name: 'Avenging Wrath', cd: 60000, kind: 'buff_self', heal: 0.1, fx: [['atkUp', 12000, 0.4], ['defUp', 12000, 0.25]], vis: 'cry', ic: ['star', '#ffd23a'], desc: '+40% damage and +25% defense for 12s and recover 10% health.' },
+  // ---- Druid
+  moonfire: { job: 'druid', lvl: 1, name: 'Moonfire', cd: 3000, kind: 'ranged_st', range: 7, mult: 2.0, scale: 'int', mag: true, vis: 'holy', fx: [['burn', 5000, 0.2]], ic: ['orb', '#9ac8ff'], desc: 'Silver fire for 200% damage that keeps burning.' },
+  rejuv: { job: 'druid', lvl: 3, name: 'Rejuvenation', cd: 12000, kind: 'hot', range: 8, mult: 0.7, ms: 10000, vis: 'heal', ic: ['cross', '#6aff8a'], desc: 'Heal over 10s: 70% of your healing power every second.' },
+  entangle: { job: 'druid', lvl: 6, name: 'Entangling Roots', cd: 14000, kind: 'ranged_st', range: 7, mult: 0.6, scale: 'int', mag: true, vis: 'bolt', fx: [['root', 4000, 0]], ic: ['web', '#6aff8a'], desc: 'Roots hold the target in place for 4s.' },
+  starfall: { job: 'druid', lvl: 9, name: 'Starfall', cd: 22000, kind: 'aoe_target', range: 8, r: 2.6, mult: 3.4, scale: 'int', mag: true, warnMs: 1000, vis: 'meteor', ic: ['star', '#bfe0ff'], desc: 'Stars crash onto an area after a short delay: 340% damage.' },
+  wildgrowth: { job: 'druid', lvl: 13, name: 'Wild Growth', cd: 25000, kind: 'hot_party', r: 8, mult: 0.55, ms: 10000, vis: 'heal', ic: ['cross', '#aaffcc'], desc: 'You and nearby party members heal over 10s.' },
+  barkskin: { job: 'druid', lvl: 17, name: 'Barkskin', cd: 45000, kind: 'shield', pct: 0.3, ms: 10000, fx: [['defUp', 10000, 0.3]], vis: 'cry', ic: ['shield', '#6aaa4a'], desc: 'A barrier worth 30% of your health and +30% defense for 10s.' },
+  // ---- Necromancer
+  deathbolt: { job: 'necromancer', lvl: 1, name: 'Death Bolt', cd: 3000, kind: 'ranged_st', range: 6, mult: 2.1, scale: 'int', mag: true, vis: 'shadow', ic: ['skull', '#9ac8b8'], desc: 'A bolt of grave-cold energy for 210% damage.' },
+  plague: { job: 'necromancer', lvl: 3, name: 'Plague', cd: 10000, kind: 'ranged_st', range: 7, mult: 0.6, scale: 'int', mag: true, vis: 'shadow', fx: [['poison', 10000, 0.3]], ic: ['drop', '#8aff6a'], desc: 'A rotting sickness: 30% damage every second for 10s.' },
+  bonespear: { job: 'necromancer', lvl: 6, name: 'Bone Spear', cd: 8000, kind: 'multi', range: 7, n: 3, mult: 1.5, scale: 'int', mag: true, vis: 'shadow', ic: ['dagger', '#e6e2cc'], desc: 'Hurl bone shards at up to 3 foes for 150% each.' },
+  boneprison: { job: 'necromancer', lvl: 9, name: 'Bone Prison', cd: 18000, kind: 'cc_aoe', r: 3.5, mult: 0.5, scale: 'int', mag: true, fx: [['root', 3000, 0]], vis: 'nova', col: '#e6e2cc', ic: ['web', '#e6e2cc'], desc: 'Bones erupt and root nearby enemies for 3s.' },
+  reap: { job: 'necromancer', lvl: 13, name: 'Reap', cd: 14000, kind: 'aoe_self', r: 3.5, mult: 2.2, scale: 'int', mag: true, vis: 'nova', col: '#7aa89a', ic: ['skull', '#7aa89a'], desc: 'A cold wave through nearby enemies for 220% damage.' },
+  lichform: { job: 'necromancer', lvl: 17, name: 'Lich Form', cd: 45000, kind: 'buff_self', heal: 0.1, fx: [['atkUp', 10000, 0.4], ['defUp', 10000, 0.3]], vis: 'cry', ic: ['skull', '#8affff'], desc: '+40% damage and +30% defense for 10s and recover 10% health.' },
+  // ---- Monk
+  flurry: { job: 'monk', lvl: 1, name: 'Flurry of Blows', cd: 3000, kind: 'melee_st', range: 1.7, mult: 0.75, hits: 3, scale: 'dex', vis: 'swing', ic: ['spin', '#ffd8a0'], desc: 'Three quick strikes for 75% damage each.' },
+  palm: { job: 'monk', lvl: 3, name: 'Stunning Palm', cd: 9000, kind: 'melee_st', range: 1.7, mult: 1.3, scale: 'dex', vis: 'bash', fx: [['stun', 1500, 0]], ic: ['star', '#ffd23a'], desc: 'Strike for 130% damage and stun for 1.5s.' },
+  meditate: { job: 'monk', lvl: 6, name: 'Meditate', cd: 24000, kind: 'buff_self', heal: 0.25, fx: [['defUp', 5000, 0.2]], vis: 'heal', ic: ['cross', '#8affc8'], desc: 'Recover 25% health and gain +20% defense for 5s.' },
+  dragonkick: { job: 'monk', lvl: 9, name: 'Dragon Kick', cd: 10000, kind: 'melee_st', range: 1.7, mult: 3.0, scale: 'dex', vis: 'swing', bonusIf: ['stun', 'slow', 'root'], bonusMult: 1.5, ic: ['boot', '#ff9a4a'], desc: '300% damage, +50% against stunned, slowed or rooted targets.' },
+  tempest: { job: 'monk', lvl: 13, name: 'Tempest Kick', cd: 12000, kind: 'aoe_self', r: 2.4, mult: 2.2, scale: 'dex', vis: 'cleave', fx: [['slow', 3000, 0.4]], ic: ['spin', '#8fe0ff'], desc: 'Spin through nearby foes for 220% damage and slow them.' },
+  chisurge: { job: 'monk', lvl: 17, name: 'Chi Surge', cd: 50000, kind: 'buff_self', fx: [['haste', 8000, 0.5], ['atkUp', 8000, 0.3], ['dodge', 2000, 1.0]], vis: 'cry', ic: ['star', '#ffe8a0'], desc: 'Move and strike much faster for 8s, dodging everything for the first 2s.' },
 };
 
 export const SKILL_ORDER = Object.keys(SKILLS);

@@ -284,6 +284,10 @@ const PRESET = {
   cleric: { hair: '#c8a060', tunic: '#f0f0e8', pants: '#c8b070', boots: '#7a5a2a', belt: '#f0d060', hat: 'cap', hatCol: '#f0d060', weapon: 'mace', robe: true },
   rogue: { hair: '#2a2a3a', tunic: '#3a3a4a', pants: '#2a2a34', boots: '#1a1a22', belt: '#8a2a2a', hat: 'hood', hatCol: '#2f2f3f', weapon: 'dagger' },
   warlock: { hair: '#3a1a3a', tunic: '#5a1f5a', pants: '#2a1030', boots: '#1a1020', belt: '#c060c0', hat: 'wizard', hatCol: '#3a1050', weapon: 'wand', robe: true },
+  paladin: { hair: '#c8a060', tunic: '#d8d0a0', pants: '#8a94a8', boots: '#6a7a8a', belt: '#e8c04a', hat: 'helm', hatCol: '#d8d0a0', weapon: 'sword', shield: true, shieldCol: '#e8d88a' },
+  druid: { hair: '#5a3a22', tunic: '#4f7a3f', pants: '#6a4a2a', boots: '#5a3a22', belt: '#8a6a3a', hat: 'hood', hatCol: '#4f8f4f', weapon: 'staff', robe: true },
+  necromancer: { hair: '#c8d8d0', tunic: '#2f4a45', pants: '#1a2a28', boots: '#1a2020', belt: '#7aa89a', hat: 'hood', hatCol: '#2a3a3a', weapon: 'wand', robe: true },
+  monk: { hair: '#2a1a12', tunic: '#c8782a', pants: '#e8e0d0', boots: '#e8e0d0', belt: '#7a2a1a', hat: 'none', weapon: 'mace' },
 };
 const NPC_LOOK = {
   elder: { skin: SKINS[0], hair: '#f2f2f2', tunic: '#3a6ab0', pants: '#2a4a80', boots: '#3a2a1a', belt: '#e8c04a', robe: true, beard: '#f2f2f2', weapon: 'staff', hat: 'none' },

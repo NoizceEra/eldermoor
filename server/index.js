@@ -256,6 +256,9 @@ function migrate(save) {
     o.look = o.look || defaultLook(o.name);
     o.v = 3;
   }
+  // jobs added after a hero was saved start at level 0 (locked until first chosen)
+  o.jobs = { ...(o.jobs || {}) };
+  for (const j of JOB_ORDER) if (!o.jobs[j]) o.jobs[j] = { lvl: 0, xp: 0 };
   return o;
 }
 const hashPass = (pass, salt) => crypto.scryptSync(pass, salt, 32).toString('hex');
@@ -288,7 +291,8 @@ function addFx(t, id, ms, pow = 0, src = 0) {
   if (id === 'shield') t.fx[id] = { until: now + ms, pow: pow + (cur && cur.until > now ? cur.pow : 0), src };
   else t.fx[id] = { until: now + ms, pow, src, next: now + 1000 };
   if (id === 'stun') t.stunUntil = Math.max(t.stunUntil || 0, now + ms);
-  if (id === 'slow' || id === 'root') t.slowUntil = Math.max(t.slowUntil || 0, now + ms);
+  if (id === 'slow') t.slowUntil = Math.max(t.slowUntil || 0, now + ms);
+  if (id === 'root') { t.slowUntil = Math.max(t.slowUntil || 0, now + ms); t.rootUntil = Math.max(t.rootUntil || 0, now + ms); }
   if (t.k === 'p') { computeStats(t); t.dirty = true; }
 }
 
@@ -316,7 +320,7 @@ function computeStats(p) {
     haste: hasteMul, range: wt.range, atkMs: wt.ms / hasteMul,
     moveMul: Math.max(0.4, 1 + (haste ? haste.pow : 0) + (J.moveHaste || 0) - (slow ? slow.pow : 0)),
     healPow: (A.spr * 1.2 + A.int * 0.3 + p.lvl) * (J.healMul || 1),
-    magMul: J.magMul || 1, lifesteal: J.lifesteal || 0, threat: p.job === 'warrior' ? 1.6 : p.job === 'rogue' ? 0.85 : 1,
+    magMul: J.magMul || 1, lifesteal: J.lifesteal || 0, threat: p.job === 'warrior' ? 1.6 : p.job === 'paladin' ? 1.4 : p.job === 'rogue' ? 0.85 : 1,
   };
   if (p.god) { p.st.def += 1e6; p.st.mres += 1e6; p.st.mh += 1e5; }
   if (p.hp > p.st.mh) p.hp = p.st.mh;
@@ -729,6 +733,7 @@ function populate() {
 
 function stepMob(m, tx, ty, now) {
   const def = MOBS[m.type];
+  if ((m.rootUntil || 0) > now) { m.moveAt = now + 150; return false; } // rooted: can still fight what is adjacent
   const dx = Math.sign(tx - m.x), dy = Math.sign(ty - m.y);
   const horizFirst = Math.abs(tx - m.x) >= Math.abs(ty - m.y);
   const tries = horizFirst ? [[dx, 0], [0, dy]] : [[0, dy], [dx, 0]];
@@ -751,7 +756,7 @@ function mobAI(m, now) {
     if (now >= m.respawnAt) {
       const s = nearestFree(m.z, m.hx, m.hy, mobFree, 3);
       if (!s) { m.respawnAt = now + 2000; return; }
-      m.x = s.x; m.y = s.y; m.hp = m.mh; m.dead = false; m.target = null; m.dmgBy.clear(); m.threat.clear(); m.fx = {}; m.stunUntil = 0; m.slowUntil = 0; place(m);
+      m.x = s.x; m.y = s.y; m.hp = m.mh; m.dead = false; m.target = null; m.dmgBy.clear(); m.threat.clear(); m.fx = {}; m.stunUntil = 0; m.slowUntil = 0; m.rootUntil = 0; place(m);
     }
     return;
   }
@@ -994,7 +999,22 @@ function castSkill(p, sk) {
       if (sk.bonusIf && sk.bonusIf.some((f) => hasFx(tgt, f))) mult *= sk.bonusMult;
       if (sk.execute && tgt.hp / tgt.mh < sk.execute[0]) mult *= sk.execute[1];
       emit(p.z, tgt.x, tgt.y, { e: 'fx', k: sk.vis || 'swing', x: p.x, y: p.y, tx: tgt.x, ty: tgt.y, id: p.id });
-      hitMob(p, tgt, dmg(mult)); applyFx(tgt);
+      for (let i = 0; i < (sk.hits || 1) && !tgt.dead; i++) hitMob(p, tgt, dmg(mult));
+      applyFx(tgt);
+      return true;
+    }
+    case 'charge': {
+      if (!need(sk.range)) return fail('No target in range.');
+      if (dist(p, tgt) > 1.6) { // land on the free tile beside the target nearest to us
+        const spots = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dy]) => [tgt.x + dx, tgt.y + dy]).filter(([x, y]) => free(p.z, x, y))
+          .sort((a, b) => Math.hypot(a[0] - p.x, a[1] - p.y) - Math.hypot(b[0] - p.x, b[1] - p.y));
+        if (!spots.length) return fail('No room to charge.');
+        fxAt(p, { k: 'dash' });
+        unplace(p); [p.x, p.y] = spots[0]; place(p);
+        for (const d of p.z.drops.values()) if (d.x === p.x && d.y === p.y) pickup(p, d);
+        fxAt(p, { k: 'dash' });
+      }
+      hitMob(p, tgt, dmg()); applyFx(tgt);
       return true;
     }
     case 'ranged_st': {
@@ -1068,6 +1088,9 @@ function castSkill(p, sk) {
       addFx(c, 'regen', sk.ms, st.healPow * sk.mult, p.id); fxAt(c);
       return true;
     }
+    case 'hot_party':
+      for (const q of allies(sk.r)) { addFx(q, 'regen', sk.ms, st.healPow * sk.mult, p.id); fxAt(q); }
+      return true;
     case 'nova_heal': {
       const hit = near(sk.r), friends = allies(sk.r).filter((q) => q.hp < q.st.mh);
       if (!hit.length && !friends.length) return fail('Nothing to affect.');
