@@ -56,9 +56,10 @@ function pathTile(v) {
   speckle(g, '#a0794a', ['#8d683c', '#b58c5a', '#6b5030'], [0.18, 0.12, 0.03], 500 + v);
   return g.canvas();
 }
-function floorTile(v, ruin) {
+function floorTile(v, mode) {
+  const ruin = mode === true || mode === 1, crypt = mode === 2;
   const g = new Grid(TS, TS);
-  const base = ruin ? '#6f7b6a' : '#8a8a96', seam = ruin ? '#4f5a4c' : '#62626f', hi = ruin ? '#838f7c' : '#a4a4b0';
+  const base = crypt ? '#4a4e66' : ruin ? '#6f7b6a' : '#8a8a96', seam = crypt ? '#2a2c40' : ruin ? '#4f5a4c' : '#62626f', hi = crypt ? '#5e6280' : ruin ? '#838f7c' : '#a4a4b0';
   g.rect(0, 0, TS, TS, base);
   const off = (v & 1) * 3;
   for (let by = 0; by < 2; by++) {
@@ -68,6 +69,10 @@ function floorTile(v, ruin) {
     }
   }
   for (let i = 0; i < 14; i++) { const x = Math.floor(hash2(i, v, 91) * 16), y = Math.floor(hash2(i, v, 92) * 16); if (g.get(x, y) === base) g.set(x, y, adj(base, hash2(i, v, 93) < 0.5 ? 0.9 : 1.1)); }
+  if (crypt) {
+    for (let i = 0; i < 3; i++) { const x = 2 + Math.floor(hash2(i, v, 97) * 12), y = 2 + Math.floor(hash2(i, v, 98) * 12); if (hash2(i, v, 99) < 0.5) { g.set(x, y, '#c8c4ae'); g.set(x + 1, y, '#a8a48e'); } }
+    if (v === 1) { g.set(5, 5, '#16121f'); g.set(6, 6, '#16121f'); g.set(7, 6, '#16121f'); g.set(8, 7, '#16121f'); }
+  }
   if (ruin) {
     for (let i = 0; i < 18; i++) { const x = Math.floor(hash2(i, v, 94) * 16), y = Math.floor(hash2(i, v, 95) * 16); if (hash2(i, v, 96) < 0.7) g.set(x, y, '#4f7a4a'); }
   }
@@ -97,17 +102,17 @@ const foamStrips = (() => {
   ];
 })();
 
-function wallTile(v) {
+function wallTile(v, dark) {
   const g = new Grid(TS, TS);
-  g.rect(0, 0, TS, TS, '#6e6e7c');
-  g.rect(0, 0, TS, 5, '#9a9aaa'); g.rect(0, 4, TS, 1, '#7a7a8a');
+  g.rect(0, 0, TS, TS, dark ? '#3e3e56' : '#6e6e7c');
+  g.rect(0, 0, TS, 5, dark ? '#62627e' : '#9a9aaa'); g.rect(0, 4, TS, 1, dark ? '#4a4a64' : '#7a7a8a');
   for (let r = 0; r < 3; r++) {
     const y = 5 + r * 4;
     g.rect(0, y + 3, TS, 1, '#46465a');
     const off = r % 2 ? 4 : 0;
     for (let x = off; x < TS; x += 8) g.rect(x, y, 1, 3, '#46465a');
   }
-  for (let i = 0; i < 12; i++) { const x = Math.floor(hash2(i, v, 31) * 16), y = 5 + Math.floor(hash2(i, v, 32) * 11); if (g.get(x, y) === '#6e6e7c') g.set(x, y, '#7c7c8c'); }
+  for (let i = 0; i < 12; i++) { const x = Math.floor(hash2(i, v, 31) * 16), y = 5 + Math.floor(hash2(i, v, 32) * 11); if (g.get(x, y) === (dark ? '#3e3e56' : '#6e6e7c')) g.set(x, y, dark ? '#484862' : '#7c7c8c'); }
   for (let x = 0; x < TS; x += 4) g.set(x, 0, '#b0b0c0');
   g.rect(0, 15, TS, 1, '#34344a');
   return g.canvas();
@@ -162,11 +167,20 @@ function deadTree(v) {
   for (let i = 0; i < 6; i++) { const x = 4 + Math.floor(hash2(i, v, 53) * 16), y = 7 + Math.floor(hash2(i, v, 54) * 8); if (g.get(x, y)) g.set(x, y + 2, '#6a8a4a'); }
   return g.outline('#1a1410').canvas();
 }
+function pillarSprite(v) {
+  const g = new Grid(24, 32);
+  g.rect(5, 27, 14, 4, '#5a5e7a'); g.rect(7, 8, 10, 19, '#7a7e9a'); g.rect(4, 4, 16, 5, '#8a8eaa'); g.rect(6, 2, 12, 3, '#9a9eba');
+  g.tex(['#7a7e9a', '#6e7290', '#868aa6'], v + 11);
+  g.shade();
+  for (const y of [11, 15, 19, 23]) g.rect(8, y, 8, 1, '#4a4e66');
+  g.set(10, 6, '#c8c4ae'); g.set(14, 6, '#c8c4ae');
+  return g.outline('#14121f').canvas();
+}
 const treeCache = new Map();
 export function treeSprite(kind, v) {
   const k = `${kind}${v}`;
   let c = treeCache.get(k);
-  if (!c) { c = kind === O.DTREE ? deadTree(v) : kind === 'pine' ? pineTree(v) : oakTree(v); treeCache.set(k, c); }
+  if (!c) { c = kind === 'pillar' ? pillarSprite(v) : kind === O.DTREE ? deadTree(v) : kind === 'pine' ? pineTree(v) : oakTree(v); treeCache.set(k, c); }
   return c;
 }
 
@@ -211,8 +225,10 @@ export function buildWorldArt(world) {
     [G.PATH]: Array.from({ length: N }, (_, i) => pathTile(i)),
     [G.FLOOR]: Array.from({ length: 4 }, (_, i) => floorTile(i, false)),
     [G.RUIN]: Array.from({ length: 4 }, (_, i) => floorTile(i, true)),
+    [G.CRYPT]: Array.from({ length: 4 }, (_, i) => floorTile(i, 2)),
+    [G.VOID]: [(() => { const g = new Grid(TS, TS); g.rect(0, 0, TS, TS, '#0a0814'); return g.canvas(); })()],
   };
-  const walls = Array.from({ length: 3 }, (_, i) => wallTile(i));
+  const walls = Array.from({ length: 3 }, (_, i) => wallTile(i, !!world.dungeon));
   const rwalls = Array.from({ length: 6 }, (_, i) => ruinWallTile(i));
   const rocks = Array.from({ length: 4 }, (_, i) => rockTile(i));
   const baked = mkCanvas(W * TS, H * TS), bx = baked.getContext('2d');
@@ -229,7 +245,7 @@ export function buildWorldArt(world) {
       // dithered blend into different neighbouring ground
       for (const [dx, dy, side] of [[0, -1, 0], [0, 1, 1], [-1, 0, 2], [1, 0, 3]]) {
         const nt = gAt(x + dx, y + dy);
-        if (nt === t || isWater(nt) || nt === G.FLOOR || t === G.FLOOR || nt === G.RUIN || t === G.RUIN) continue;
+        if (nt === t || isWater(nt) || nt === G.FLOOR || t === G.FLOOR || nt === G.RUIN || t === G.RUIN || nt === G.CRYPT || t === G.CRYPT || nt === G.VOID || t === G.VOID) continue;
         const col = GROUND_BASE[nt];
         if (!col) continue;
         bx.fillStyle = col;
@@ -246,6 +262,7 @@ export function buildWorldArt(world) {
       else if (o === O.ROCK) bx.drawImage(rocks[v % 4], x * TS, y * TS);
       else if (o === O.TREE) trees[y].push({ x, kind: t === G.FOREST ? 'pine' : 'oak', v });
       else if (o === O.DTREE) trees[y].push({ x, kind: O.DTREE, v });
+      else if (o === O.PILLAR) trees[y].push({ x, kind: 'pillar', v });
     }
   }
   world.houses.forEach((h, i) => bx.drawImage(paintHouse(h.w, h.h, i), h.x * TS, h.y * TS));
@@ -266,11 +283,11 @@ export function buildWorldArt(world) {
 
   // minimap base
   const mm = mkCanvas(W, H), mx = mm.getContext('2d');
-  const MC = { [G.GRASS]: '#4c9a3a', [G.FOREST]: '#2f6b34', [G.SWAMP]: '#3d5a4a', [G.SAND]: '#dcc58a', [G.WATER]: '#2f6fb8', [G.DEEP]: '#1f4a8c', [G.PATH]: '#a0794a', [G.FLOOR]: '#9a9aa8', [G.RUIN]: '#6f7b6a' };
+  const MC = { [G.GRASS]: '#4c9a3a', [G.FOREST]: '#2f6b34', [G.SWAMP]: '#3d5a4a', [G.SAND]: '#dcc58a', [G.WATER]: '#2f6fb8', [G.DEEP]: '#1f4a8c', [G.PATH]: '#a0794a', [G.FLOOR]: '#9a9aa8', [G.RUIN]: '#6f7b6a', [G.CRYPT]: '#4a4e66', [G.VOID]: '#0a0814' };
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
       const o = world.o[y * W + x];
-      mx.fillStyle = o === O.WALL || o === O.HOUSE ? '#5a5a6a' : o === O.TREE ? '#1f5a2a' : o === O.DTREE ? '#3a3a30' : o === O.RWALL ? '#555' : MC[world.g[y * W + x]];
+      mx.fillStyle = o === O.WALL || o === O.HOUSE ? '#5a5a6a' : o === O.TREE ? '#1f5a2a' : o === O.DTREE ? '#3a3a30' : o === O.RWALL ? '#555' : o === O.PILLAR ? '#8a8eaa' : MC[world.g[y * W + x]];
       mx.fillRect(x, y, 1, 1);
     }
   }

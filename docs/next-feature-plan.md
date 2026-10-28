@@ -1,6 +1,6 @@
 # Eldermoor - next feature pass
 
-> **Status:** Phase 1 (parties), Phase 2 (touch controls) and the small NPC-lookup/status fixes are implemented. Phases 3-4 are still plans.
+> **Status:** Phases 1-3 (parties, touch controls, dungeon with Zone refactor) and the small NPC-lookup/status fixes are implemented. Only Phase 4 (trading) is still a plan.
 
 Baseline: commit `9d7ef74` on `feat/mmorpg-vertical-slice`. Authoritative server in `server/index.js`
 (20 Hz tick, 10 Hz state), client in `client/main.js`, shared data in `shared/`.

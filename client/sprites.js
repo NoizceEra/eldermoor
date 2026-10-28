@@ -209,6 +209,8 @@ const NPC_LOOK = {
   shop: { skin: SKINS[1], hair: '#6a3a1a', tunic: '#c0a060', pants: '#5a4a2a', boots: '#3a2a1a', belt: '#3a2a1a', apron: true, hat: 'cap', hatCol: '#a03030' },
   guard: { skin: SKINS[1], hair: '#3a2a1a', tunic: '#3a5a9a', pants: '#4a4a5a', boots: '#2a2a2a', belt: '#c8a040', hat: 'helm', weapon: 'spear', shield: false },
   goblin: { skin: '#6fae48', hair: '#4a7a30', tunic: '#7a5a30', pants: '#4a3a22', boots: '#2a1a0a', belt: '#2a1a0a', hat: 'none', weapon: 'dagger', ears: true, eye: '#ff3a3a' },
+  ghoul: { skin: '#7a9a7a', hair: '#3a4a3a', tunic: '#4a4a5a', pants: '#2a2a3a', boots: '#2a2a2a', belt: '#2a2a2a', hat: 'none', eye: '#ffe83a', ears: true },
+  wraith: { skin: '#a8c4ff', hair: '#a8c4ff', tunic: '#3a4a9a', pants: '#2a3a7a', boots: '#2a3a7a', belt: '#6a8aff', robe: true, hat: 'hood', hatCol: '#2a3a7a', eye: '#8affff', weapon: 'staff', blade: '#8affff' },
   skeleton: { skin: '#e6e2cc', hair: '#e6e2cc', tunic: '#d9d5bf', sleeve: '#e6e2cc', pants: '#cfcbb5', boots: '#bdb9a3', belt: '#8a8672', hat: 'none', weapon: 'bow', ribs: true, sockets: true, blade: '#bba' },
 };
 
@@ -283,6 +285,25 @@ function golem(fr) {
   return g.outline().canvas();
 }
 
+function bonelord(fr) {
+  const g = new Grid(32, 32);
+  const up = fr ? 1 : 0;
+  g.rect(8, 13, 16, 17, '#3a2a5a'); g.rect(6, 22, 20, 8, '#3a2a5a'); g.rect(9, 26, 14, 4, '#2a1c44'); // robe
+  g.rect(11, 13, 10, 8, '#e6e2cc'); // ribcage
+  g.rect(4, 13 - up, 3, 10, '#d9d5bf'); g.rect(25, 13 - up, 3, 10, '#d9d5bf'); g.rect(3, 22 - up, 5, 3, '#e6e2cc'); g.rect(24, 22 - up, 5, 3, '#e6e2cc'); // arms
+  g.rect(11, 3, 10, 9, '#e6e2cc'); g.rect(12, 11, 8, 3, '#d9d5bf'); // skull + jaw
+  for (const x of [11, 14, 17, 20]) g.rect(x, 0, 2, 3, '#f0c040'); g.rect(11, 3, 10, 1, '#f0c040'); // crown
+  g.rect(29, 2, 1, 28, '#6a4a2a'); g.rect(27, 0, 4, 4, '#6aff8a'); // staff + orb
+  g.shade();
+  g.rect(13, 6, 2, 2, '#6aff8a'); g.rect(17, 6, 2, 2, '#6aff8a'); g.set(13, 6, '#e8ffe8'); g.set(17, 6, '#e8ffe8');
+  g.rect(15, 9, 2, 2, '#2a1c44');
+  for (const y of [14, 16, 18]) g.rect(12, y, 8, 1, '#8a866e');
+  g.rect(15, 13, 2, 8, '#8a866e');
+  g.rect(14, 22, 4, 4, '#6aff8a'); g.rect(15, 23, 2, 2, '#e8ffe8'); // soul gem
+  if (fr) { g.set(28, 1, '#fff'); g.set(30, 3, '#fff'); }
+  return g.outline().canvas();
+}
+
 export function mobSprite(type, dir, fr) {
   const f2 = fr & 1;
   switch (type) {
@@ -290,6 +311,12 @@ export function mobSprite(type, dir, fr) {
     case 'bat': return memo(`m${type}${f2}`, () => bat(f2));
     case 'wolf': { const flip = dir === 2; return memo(`m${type}${f2}${flip}`, () => { const c = wolf(f2); if (!flip) return c; const n = mkCanvas(16, 16), x = n.getContext('2d'); x.scale(-1, 1); x.drawImage(c, -16, 0); return n; }); }
     case 'golem': return memo(`m${type}${f2}`, () => golem(f2));
+    case 'bonelord': return memo(`m${type}${f2}`, () => bonelord(f2));
+    case 'ghoul': return memo(`m${type}${dir}${fr}`, () => humanoid({ ...NPC_LOOK.ghoul }, dir, fr));
+    case 'wraith': return memo(`m${type}${dir}${fr}`, () => {
+      const c = humanoid({ ...NPC_LOOK.wraith }, dir, fr), n = mkCanvas(16, 16), x = n.getContext('2d');
+      x.globalAlpha = 0.8; x.drawImage(c, 0, 0); return n;
+    });
     case 'goblin': return memo(`m${type}${dir}${fr}`, () => humanoid({ ...NPC_LOOK.goblin }, dir, fr));
     case 'skeleton': return memo(`m${type}${dir}${fr}`, () => humanoid({ ...NPC_LOOK.skeleton }, dir, fr));
     default: return memo('m?', () => slime(0));

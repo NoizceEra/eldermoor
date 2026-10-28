@@ -68,16 +68,33 @@ for (const bt of [A, B]) {
 await wait(400);
 ok(A.me.quest.s === 1 && B.me.quest.s === 1, 'both accepted the slime quest');
 
-// A hunts a slime near town while B waits in range (B never attacks)
-const xp0 = [A.me.xp + A.me.lvl * 1000, B.me.xp + B.me.lvl * 1000];
-for (let step = 0; step < 300 && A.me.quest.p < 1; step++) {
+// A leaves town through the south gate (x 63-65), then hunts a slime while B waits in range (B never attacks)
+for (let i = 0; i < 40 && A.pos().y < 79; i++) {
   const me = A.pos();
-  const slime = A.ents.filter((e) => e.k === 'm' && e.s === 'slime').sort((a, b) => Math.hypot(a.x - me.x, a.y - me.y) - Math.hypot(b.x - me.x, b.y - me.y))[0];
+  A.tx({ t: 'move', dx: me.y < 70 || me.x === 64 ? 0 : Math.sign(64 - me.x), dy: me.y < 70 || me.x === 64 ? 1 : 0 });
+  await wait(170);
+}
+const xp0 = [A.me.xp + A.me.lvl * 1000, B.me.xp + B.me.lvl * 1000];
+let lastPos = null, stuck_n = 0, curT = 0, curSteps = 0;
+const skip = new Set();
+for (let step = 0; step < 400 && A.me.quest.p < 1; step++) {
+  const me = A.pos();
+  const slime = A.ents.filter((e) => e.k === 'm' && e.s === 'slime' && !skip.has(e.i)).sort((a, b) => Math.hypot(a.x - me.x, a.y - me.y) - Math.hypot(b.x - me.x, b.y - me.y))[0];
   if (!slime) { A.tx({ t: 'move', dx: 0, dy: 1 }); await wait(170); continue; }
+  if (slime.i !== curT) { curT = slime.i; curSteps = 0; }
+  if (++curSteps > 70) { skip.add(slime.i); continue; } // unreachable (water/trees): try another
   A.tx({ t: 'target', id: slime.i });
   const dx = slime.x - me.x, dy = slime.y - me.y;
-  if (Math.hypot(dx, dy) > 1.4) A.tx({ t: 'move', dx: Math.abs(dx) >= Math.abs(dy) ? Math.sign(dx) : 0, dy: Math.abs(dx) >= Math.abs(dy) ? 0 : Math.sign(dy) });
-  else A.tx({ t: 'skill', n: 1 });
+  const stuck = lastPos && lastPos.x === me.x && lastPos.y === me.y && Math.hypot(dx, dy) > 1.4;
+  stuck_n = stuck ? stuck_n + 1 : 0;
+  lastPos = { x: me.x, y: me.y };
+  if (Math.hypot(dx, dy) > 1.4) {
+    // greedy walk; when a tree/rock blocks us, sidestep along the other axis (or randomly if still stuck)
+    let mx = Math.abs(dx) >= Math.abs(dy) ? Math.sign(dx) : 0, my = mx ? 0 : Math.sign(dy);
+    if (stuck_n > 0 && stuck_n < 4) { mx = mx ? 0 : (Math.sign(dx) || 1); my = my ? 0 : (Math.sign(dy) || 1); if (mx && my) my = 0; }
+    else if (stuck_n >= 4) { const d = [[1, 0], [-1, 0], [0, 1], [0, -1]][Math.floor(Math.random() * 4)]; mx = d[0]; my = d[1]; }
+    A.tx({ t: 'move', dx: mx, dy: my });
+  } else A.tx({ t: 'skill', n: 1 });
   await wait(170);
 }
 await wait(600);

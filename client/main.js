@@ -1,12 +1,17 @@
 // Eldermoor client: rendering, input, networking and UI.
-import { W, H, G, O, TOWN, generateWorld, isSolid, inTown } from '/shared/world.js';
+import { W, H, G, O, TOWN, generateWorld, generateDungeon, isSolid, inTown } from '/shared/world.js';
 import { SEED, CLASSES, MOBS, QUESTS, RARITY, NPCS } from '/shared/data.js';
 import * as SP from '/client/sprites.js';
 import { TS, buildWorldArt, drawWaterTile, treeSprite } from '/client/gfx.js';
 
 const $ = (id) => document.getElementById(id);
-const world = generateWorld(SEED);
-const art = buildWorldArt(world);
+const worldOver = generateWorld(SEED);
+const artOver = buildWorldArt(worldOver);
+let world = worldOver, art = artOver; // swapped when the server moves us into a dungeon instance
+let zoneKind = 'world', zoneId = 'world';
+const dungeonCache = new Map(); // seed -> { world, art }
+const BIG = new Set(['golem', 'bonelord']);
+const HUMANOID = new Set(['goblin', 'skeleton', 'ghoul', 'wraith']);
 
 // ------------------------------------------------------------------ canvas setup
 const screen = $('screen'), sctx = screen.getContext('2d');
@@ -106,13 +111,14 @@ const tx = (o) => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); }
 function onMsg(m) {
   switch (m.t) {
     case 'welcome':
-      myId = m.id; npcs = m.npcs; inGame = true;
+      myId = m.id; applyZone(m.zone); inGame = true;
       $('login').classList.add('hidden'); $('ui').classList.remove('hidden');
       break;
     case 'err': $('loginErr').textContent = m.m; ws.close(); break;
     case 's': applyState(m); break;
     case 'me': me = m; onMe(); break;
     case 'log': addLine(`<span style="color:${m.c}">${esc(m.m)}</span>`); break;
+    case 'zone': applyZone(m); break;
     case 'party': party = m; pmData.clear(); renderParty(); break;
     case 'pm': for (const r of m.m) pmData.set(r.id, r); renderParty(); break;
     case 'pinv':
@@ -129,6 +135,18 @@ function onMsg(m) {
     case 'ev': onEvent(m); break;
     default:
   }
+}
+
+function applyZone(z) {
+  zoneKind = z.kind; zoneId = z.id;
+  if (z.kind === 'dungeon') {
+    if (!dungeonCache.has(z.seed)) { const w = generateDungeon(z.seed); dungeonCache.set(z.seed, { world: w, art: buildWorldArt(w) }); }
+    ({ world, art } = dungeonCache.get(z.seed));
+  } else { world = worldOver; art = artOver; }
+  npcs = z.npcs.map((n) => ({ ...n }));
+  ents.clear(); fxs.length = 0; parts.length = 0; floaters.length = 0; goal = null;
+  closeDialog();
+  if (z.kind === 'dungeon') banner(z.name);
 }
 
 function applyState(m) {
@@ -309,7 +327,7 @@ function pickAt(px, py) {
   const tx0 = Math.floor(px / TS), ty0 = Math.floor(py / TS);
   let best = null, bd = 1.1;
   const consider = (e, kind) => {
-    const h = e.s === 'golem' ? 1.6 : 0.7;
+    const h = BIG.has(e.s) ? 1.6 : 0.7;
     const d = Math.hypot(e.rx - (px - 8) / TS, e.ry - (py - 8) / TS + (h > 1 ? 0.5 : 0));
     if (d < bd) { bd = d; best = { kind, e }; }
   };
@@ -647,8 +665,8 @@ function drawEntity(o, t, tgId) {
     const fr = o.moving ? [1, 0, 3, 0][Math.floor(t / 110) % 4] : 0;
     spr = SP.playerSprite(o.c, skinOf(o.i), o.f, fr, o.w, o.wr, o.ar);
   } else {
-    const fr = o.s === 'bat' ? Math.floor(t / 110) % 2 : o.s === 'slime' ? Math.floor(t / 320) % 2 : o.moving ? Math.floor(t / 160) % 2 : o.s === 'golem' ? Math.floor(t / 600) % 2 : 0;
-    spr = SP.mobSprite(o.s, o.f, o.s === 'goblin' || o.s === 'skeleton' ? (o.moving ? [1, 0, 3, 0][Math.floor(t / 130) % 4] : 0) : fr);
+    const fr = o.s === 'bat' ? Math.floor(t / 110) % 2 : o.s === 'slime' ? Math.floor(t / 320) % 2 : o.moving ? Math.floor(t / 160) % 2 : BIG.has(o.s) ? Math.floor(t / 600) % 2 : 0;
+    spr = SP.mobSprite(o.s, o.f, HUMANOID.has(o.s) ? (o.moving ? [1, 0, 3, 0][Math.floor(t / 130) % 4] : 0) : fr);
     if (o.s === 'wolf') spr = SP.mobSprite('wolf', o.f === 2 ? 2 : 3, fr);
     if (o.s === 'bat') oy = -4 + Math.round(Math.sin(t / 180 + o.i) * 2);
   }
@@ -656,11 +674,11 @@ function drawEntity(o, t, tgId) {
   const baseX = o.rx * TS + 8 - w / 2 + lx0, baseY = o.ry * TS + 16 - spr.height + ly0 + oy;
   const px = Math.round(baseX - camX), py = Math.round(baseY - camY);
   if (px < -40 || py < -40 || px > VW + 40 || py > VH + 40) return;
-  shadow(px + w / 2, py + spr.height - (o.s === 'bat' ? 0 : 3) - oy * (o.s === 'bat' ? -1 : 0) + (o.s === 'bat' ? 0 : 0), o.s === 'golem' ? 22 : o.s === 'bat' ? 6 : 10);
+  shadow(px + w / 2, py + spr.height - (o.s === 'bat' ? 0 : 3) - oy * (o.s === 'bat' ? -1 : 0) + (o.s === 'bat' ? 0 : 0), BIG.has(o.s) ? 22 : o.s === 'bat' ? 6 : 10);
   if (o.id === undefined && o.i === tgId) {
     const pulse = Math.floor(t / 250) % 2;
     wx.fillStyle = '#ff4a4a';
-    const x0 = Math.round(o.rx * TS - camX) - pulse, y0 = Math.round(o.ry * TS - camY) - pulse, ww = (o.s === 'golem' ? 2 : 1) * 16 + pulse * 2;
+    const x0 = Math.round(o.rx * TS - camX) - pulse, y0 = Math.round(o.ry * TS - camY) - pulse, ww = (BIG.has(o.s) ? 2 : 1) * 16 + pulse * 2;
     for (const [cx, cy] of [[x0, y0 + 11], [x0 + ww - 3, y0 + 11]]) { wx.fillRect(cx, cy + 3, 3, 1); }
     wx.fillRect(x0 + 1, y0 + 14, 3, 1); wx.fillRect(x0 + 12 + pulse * 2, y0 + 14, 3, 1);
     wx.fillRect(x0, y0 + 13, 1, 2); wx.fillRect(x0 + 15 + pulse * 2, y0 + 13, 1, 2);
@@ -673,8 +691,8 @@ function drawEntity(o, t, tgId) {
   if (o.dying) return;
   // overhead bars + labels
   const cx = px + w / 2;
-  const barW = o.s === 'golem' ? 26 : 12;
-  if (o.k === 'm' && (o.h < o.mh || o.i === tgId)) drawHealthBar(Math.round(cx - barW / 2), py - 2 - (o.s === 'golem' ? 0 : 0), barW, o.h / o.mh);
+  const barW = BIG.has(o.s) ? 26 : 12;
+  if (o.k === 'm' && (o.h < o.mh || o.i === tgId)) drawHealthBar(Math.round(cx - barW / 2), py - 2 - (BIG.has(o.s) ? 0 : 0), barW, o.h / o.mh);
   if (o.k === 'p' && o.i !== myId) drawHealthBar(Math.round(cx - 6), py - 1, 12, o.h / o.mh, '#4ac86a');
   const name = o.k === 'p' ? o.n : mobDef(o).name;
   const col = o.k === 'p' ? (o.i === myId ? '#8be88b' : inParty(o.i) ? '#6ab8ff' : '#ffffff') : levelColor(o.l);
@@ -776,7 +794,25 @@ function drawDrop(d, t) {
   if (!d.g && d.r > 0 && Math.floor(t / 200 + d.i) % 3 === 0) { wx.fillStyle = SP.RARITY_COL[d.r]; wx.fillRect(px + 3 + ((d.i * 5) % 9), py + 2 + ((d.i * 3) % 7), 1, 1); }
 }
 
+function drawPortal(n, t) {
+  const cx = Math.round(n.x * TS + 8 - camX), cy = Math.round(n.y * TS + 8 - camY);
+  const exit = n.name === 'Exit', c1 = exit ? '#8aff9a' : '#c06bff', c2 = exit ? '#3a8a5a' : '#7a3fc0';
+  shadow(cx, cy + 7, 12);
+  for (let dy = -10; dy <= 10; dy++) {
+    const hw = Math.round(7 * Math.sqrt(1 - (dy / 10.5) ** 2));
+    wx.fillStyle = '#120a24'; wx.fillRect(cx - hw, cy + dy - 2, hw * 2, 1);
+    wx.fillStyle = c1; wx.fillRect(cx - hw, cy + dy - 2, 1, 1); wx.fillRect(cx + hw - 1, cy + dy - 2, 1, 1);
+  }
+  wx.fillStyle = c1; wx.fillRect(cx - 3, cy - 12, 6, 1); wx.fillRect(cx - 3, cy + 8, 6, 1);
+  for (let i = 0; i < 14; i++) {
+    const a = t / 380 + i * 0.45, r = 1.5 + (i % 7) * 0.8;
+    wx.fillStyle = i % 2 ? c1 : c2; wx.fillRect(Math.round(cx + Math.cos(a) * r), Math.round(cy - 2 + Math.sin(a) * r * 1.5), 1, 1);
+  }
+  labels.push({ x: cx, y: cy - 16, txt: n.name, col: c1 });
+}
+
 function drawNpc(n, t) {
+  if (n.role === 'portal') return drawPortal(n, t);
   const spr = SP.npcSprite(n.key, n.key === 'guard' ? 0 : (Math.floor(t / 2500 + n.id) % 6 === 0 ? 3 : 0), 0);
   const px = n.x * TS - camX, py = n.y * TS - camY;
   shadow(px + 8, py + 13, 10);
@@ -831,7 +867,7 @@ function render(t, dt) {
 
   // lighting (day/night)
   const phase = (((Date.now() + timeOff) % DAY_MS) + DAY_MS) % DAY_MS / DAY_MS;
-  const amb = ambient(phase);
+  const amb = zoneKind === 'dungeon' ? [92, 94, 135] : ambient(phase);
   const dark = 1 - (amb[0] + amb[1] + amb[2]) / 765;
   if (dark > 0.02) {
     lx.globalCompositeOperation = 'source-over';
@@ -841,10 +877,10 @@ function render(t, dt) {
       const g = lx.createRadialGradient(x, y, 1, x, y, r);
       g.addColorStop(0, col); g.addColorStop(1, 'rgba(0,0,0,0)'); lx.fillStyle = g; lx.fillRect(x - r, y - r, r * 2, r * 2);
     };
-    for (const o of ents.values()) if (o.k === 'p' && !o.d) light(o.rx * TS + 8 - camX, o.ry * TS + 4 - camY, 46, 'rgba(255,200,120,.8)');
+    for (const o of ents.values()) if (o.k === 'p' && !o.d) light(o.rx * TS + 8 - camX, o.ry * TS + 4 - camY, zoneKind === 'dungeon' ? 66 : 46, 'rgba(255,200,120,.8)');
     for (const n of npcs) light(n.x * TS + 8 - camX, n.y * TS + 6 - camY, 30, 'rgba(255,190,110,.6)');
     for (const f of fxs) if (['fire', 'bolt', 'levelup', 'nova'].includes(f.k)) light(f.x * TS + 8 - camX, f.y * TS + 8 - camY, 40, 'rgba(255,170,90,.6)');
-    for (const o of ents.values()) if (o.k === 'm' && o.s === 'golem') light(o.rx * TS + 8 - camX, o.ry * TS - camY, 26, 'rgba(255,140,40,.7)');
+    for (const o of ents.values()) if (o.k === 'm' && BIG.has(o.s)) light(o.rx * TS + 8 - camX, o.ry * TS - camY, 26, 'rgba(255,140,40,.7)');
     wx.globalCompositeOperation = 'multiply'; wx.drawImage(lm, 0, 0); wx.globalCompositeOperation = 'source-over';
   }
 
@@ -895,12 +931,12 @@ function drawMinimap(t) {
   for (const o of ents.values()) {
     if (o.dying) continue;
     const px = o.x - ox, py = o.y - oy; if (px < 0 || py < 0 || px >= 64 || py >= 64) continue;
-    if (o.k === 'm') { x.fillStyle = o.s === 'golem' ? '#ff9a3a' : '#e04a4a'; x.fillRect(px, py, o.s === 'golem' ? 3 : 1, o.s === 'golem' ? 3 : 1); }
+    if (o.k === 'm') { x.fillStyle = BIG.has(o.s) ? '#ff9a3a' : '#e04a4a'; x.fillRect(px, py, BIG.has(o.s) ? 3 : 1, BIG.has(o.s) ? 3 : 1); }
     else if (o.k === 'p' && o.i !== myId) { x.fillStyle = '#6ae0ff'; x.fillRect(px - 1, py - 1, 2, 2); }
   }
   for (const n of npcs) { x.fillStyle = '#ffe066'; x.fillRect(n.x - ox - 1, n.y - oy - 1, 2, 2); }
   for (const [id, d] of pmData) { // party members stay on the map even when out of view
-    if (id === myId) continue;
+    if (id === myId || (d.z && d.z !== zoneId)) continue;
     const px = d.x - ox, py = d.y - oy; if (px < 0 || py < 0 || px >= 64 || py >= 64) continue;
     x.fillStyle = '#6aff8a'; x.fillRect(px - 1, py - 1, 3, 3); x.fillStyle = '#0d0a18'; x.fillRect(px, py, 1, 1);
   }

@@ -4,9 +4,9 @@ export const W = 128;
 export const H = 128;
 
 // Ground layer
-export const G = { GRASS: 0, FOREST: 1, SWAMP: 2, SAND: 3, WATER: 4, DEEP: 5, PATH: 6, FLOOR: 7, RUIN: 8 };
+export const G = { GRASS: 0, FOREST: 1, SWAMP: 2, SAND: 3, WATER: 4, DEEP: 5, PATH: 6, FLOOR: 7, RUIN: 8, VOID: 9, CRYPT: 10 };
 // Object layer (things standing on the ground)
-export const O = { NONE: 0, TREE: 1, DTREE: 2, ROCK: 3, HOUSE: 4, WALL: 5, RWALL: 6 };
+export const O = { NONE: 0, TREE: 1, DTREE: 2, ROCK: 3, HOUSE: 4, WALL: 5, RWALL: 6, PILLAR: 7 };
 
 export const TOWN = { cx: 64, cy: 64, r: 11 };
 export const BOSS = { x: 100, y: 28 };
@@ -53,7 +53,7 @@ export function isSolid(world, x, y) {
   if (x < 0 || y < 0 || x >= W || y >= H) return true;
   const i = y * W + x;
   const g = world.g[i];
-  return g === G.WATER || g === G.DEEP || world.o[i] !== O.NONE;
+  return g === G.WATER || g === G.DEEP || g === G.VOID || world.o[i] !== O.NONE;
 }
 
 export function generateWorld(seed) {
@@ -185,4 +185,48 @@ export function generateWorld(seed) {
   carve(cx - R - 1, cy, cx - 40, cy - 6, seed + 34);
 
   return { g, o, houses, spawn: { x: cx, y: cy + 3 } };
+}
+
+/**
+ * Sunken Crypt: a snake of rooms joined by 3-wide corridors on the same 128x128 grid, so the
+ * overworld renderer and pathfinding work unchanged. Deterministic from the seed.
+ */
+export function generateDungeon(seed) {
+  const g = new Uint8Array(W * H).fill(G.VOID);
+  const o = new Uint8Array(W * H);
+  const idx = (x, y) => y * W + x;
+  const r = rng(seed);
+  const cells = [[0, 2], [1, 2], [2, 2], [2, 1], [1, 1], [1, 0], [2, 0], [3, 0]];
+  const rooms = cells.map(([cx, cy], i) => {
+    const boss = i === cells.length - 1, entry = i === 0;
+    const w = boss ? 22 + Math.floor(r() * 4) : entry ? 11 : 12 + Math.floor(r() * 9);
+    const h = boss ? 20 + Math.floor(r() * 4) : entry ? 10 : 11 + Math.floor(r() * 8);
+    const x = cx * 32 + 2 + Math.floor(r() * (28 - w));
+    const y = 16 + cy * 32 + 2 + Math.floor(r() * (28 - h));
+    return { x, y, w, h, cx: x + (w >> 1), cy: y + (h >> 1), boss, entry };
+  });
+  const carve = (x0, y0, w, h) => { for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) g[idx(x, y)] = G.CRYPT; };
+  for (const rm of rooms) carve(rm.x, rm.y, rm.w, rm.h);
+  for (let i = 1; i < rooms.length; i++) {
+    const a = rooms[i - 1], b = rooms[i];
+    carve(Math.min(a.cx, b.cx) - 1, a.cy - 1, Math.abs(a.cx - b.cx) + 3, 3);
+    carve(b.cx - 1, Math.min(a.cy, b.cy) - 1, 3, Math.abs(a.cy - b.cy) + 3);
+  }
+  for (const rm of rooms) {
+    if (rm.entry || rm.w < 14 || rm.h < 12) continue;
+    const spots = [[3, 3], [rm.w - 4, 3], [3, rm.h - 4], [rm.w - 4, rm.h - 4]];
+    if (rm.boss) spots.push([rm.w >> 1, 3], [rm.w >> 1, rm.h - 4]);
+    for (const [dx, dy] of spots) o[idx(rm.x + dx, rm.y + dy)] = O.PILLAR;
+  }
+  // walls: every void tile touching a floor tile
+  for (let y = 1; y < H - 1; y++) {
+    for (let x = 1; x < W - 1; x++) {
+      if (g[idx(x, y)] !== G.VOID) continue;
+      let near = false;
+      for (let dy = -1; dy <= 1 && !near; dy++) for (let dx = -1; dx <= 1; dx++) if (g[idx(x + dx, y + dy)] === G.CRYPT) { near = true; break; }
+      if (near) o[idx(x, y)] = O.WALL;
+    }
+  }
+  const e = rooms[0];
+  return { g, o, houses: [], dungeon: true, rooms, spawn: { x: e.cx + 1, y: e.cy }, exit: { x: e.x + 1, y: e.cy } };
 }

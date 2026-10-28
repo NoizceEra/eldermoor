@@ -5,9 +5,10 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
-import { W, G, TOWN, BOSS, CAMP, inTown, generateWorld, isSolid } from '../shared/world.js';
+import { W, G, TOWN, BOSS, CAMP, inTown, generateWorld, generateDungeon, isSolid } from '../shared/world.js';
 import {
   SEED, TICK_MS, MAX_LEVEL, INV_SIZE, CLASSES, MOBS, QUESTS, RARITY, NPCS, xpForLevel,
+  DUNGEON_SEED, DUNGEON_REC_LVL, PORTAL, PORTAL_ID, EXIT_ID,
 } from '../shared/data.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -17,33 +18,44 @@ const PORT = Number(process.env.PORT) || 3000;
 // ---------------------------------------------------------------- helpers
 const world = generateWorld(SEED);
 const key = (x, y) => y * W + x;
-const solid = (x, y) => isSolid(world, x, y);
 const rand = (a, b) => a + Math.random() * (b - a);
 const ri = (a, b) => Math.floor(rand(a, b + 1));
 const pick = (a) => a[Math.floor(Math.random() * a.length)];
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const face = (dx, dy) => (dy > 0 ? 0 : dy < 0 ? 1 : dx < 0 ? 2 : 3);
+const INSTANCE_TTL = Number(process.env.EM_INSTANCE_TTL) || 60000;
+const DEBUG = process.env.EM_DEBUG === '1'; // test-only teleport / god-mode messages
 
 let nextId = 100;
 const players = new Map(); // id -> player
-const mobs = new Map();
-const drops = new Map();
-const occ = new Map(); // tile -> entity (players, mobs, npcs)
-const npcs = NPCS.map((n) => ({ ...n, k: 'n' }));
-const npcByRole = (role) => npcs.find((n) => n.role === role);
-for (const n of npcs) occ.set(key(n.x, n.y), n);
 
-const place = (e) => occ.set(key(e.x, e.y), e);
-const unplace = (e) => { if (occ.get(key(e.x, e.y)) === e) occ.delete(key(e.x, e.y)); };
-const free = (x, y) => !solid(x, y) && !occ.has(key(x, y));
-const mobFree = (x, y) => free(x, y) && !inTown(x, y);
+// A zone is one self-contained map with its own monsters, loot and occupancy:
+// the overworld, or a private dungeon instance.
+function makeZone(id, kind, w) {
+  return { id, kind, world: w, mobs: new Map(), drops: new Map(), occ: new Map(), npcs: [], emptyAt: 0 };
+}
+const overworld = makeZone('world', 'world', world);
+overworld.npcs = [...NPCS, PORTAL].map((n) => ({ ...n, k: 'n' }));
+for (const n of overworld.npcs) overworld.occ.set(key(n.x, n.y), n);
+const zones = new Map([[overworld.id, overworld]]);
+const instances = new Map(); // party/solo key -> dungeon zone
+let nextInstance = 1;
+const npcByRole = (role) => overworld.npcs.find((n) => n.role === role);
+const nearNpc = (p, n) => p.z === overworld && dist(p, n) <= 4.5;
 
-function nearestFree(x, y, ok = free, maxR = 6) {
+const solid = (z, x, y) => isSolid(z.world, x, y);
+const place = (e) => e.z.occ.set(key(e.x, e.y), e);
+const unplace = (e) => { if (e.z.occ.get(key(e.x, e.y)) === e) e.z.occ.delete(key(e.x, e.y)); };
+const free = (z, x, y) => !solid(z, x, y) && !z.occ.has(key(x, y));
+const safeAt = (z, x, y) => z.kind === 'world' && inTown(x, y); // monsters never enter, players can't be hurt
+const mobFree = (z, x, y) => free(z, x, y) && !safeAt(z, x, y);
+
+function nearestFree(z, x, y, ok = free, maxR = 6) {
   for (let r = 0; r <= maxR; r++) {
     for (let dy = -r; dy <= r; dy++) {
       for (let dx = -r; dx <= r; dx++) {
         if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
-        if (ok(x + dx, y + dy)) return { x: x + dx, y: y + dy };
+        if (ok(z, x + dx, y + dy)) return { x: x + dx, y: y + dy };
       }
     }
   }
@@ -132,7 +144,7 @@ function writeSaves() {
 function savePlayer(p) {
   saves[p.name.toLowerCase()] = {
     name: p.name, salt: p.salt, hash: p.hash, cls: p.cls, lvl: p.lvl, xp: p.xp, gold: p.gold,
-    inv: p.inv, eq: p.eq, quest: p.quest, x: p.x, y: p.y, hp: p.hp,
+    inv: p.inv, eq: p.eq, quest: p.quest, x: (p.z && p.z.kind !== 'world' ? p.ret : p).x, y: (p.z && p.z.kind !== 'world' ? p.ret : p).y, hp: p.hp,
   };
   savesDirty = true;
 }
@@ -141,10 +153,10 @@ const hashPass = (pass, salt) => crypto.scryptSync(pass, salt, 32).toString('hex
 // ---------------------------------------------------------------- networking helpers
 const send = (p, o) => { if (p.ws && p.ws.readyState === 1) p.ws.send(JSON.stringify(o)); };
 const log = (p, m, c = '#ddd') => send(p, { t: 'log', m, c });
-function emit(x, y, ev) {
+function emit(z, x, y, ev) {
   const s = JSON.stringify({ t: 'ev', ...ev });
   for (const p of players.values()) {
-    if (Math.abs(p.x - x) < 32 && Math.abs(p.y - y) < 22 && p.ws.readyState === 1) p.ws.send(s);
+    if (p.z === z && Math.abs(p.x - x) < 32 && Math.abs(p.y - y) < 22 && p.ws.readyState === 1) p.ws.send(s);
   }
 }
 const sayAll = (m, c) => { for (const p of players.values()) log(p, m, c); };
@@ -155,6 +167,8 @@ function computeStats(p) {
   let atk = c.atk + c.atkL * p.lvl, def = p.lvl * 1.2, mh = c.hp + c.hpL * p.lvl;
   for (const it of Object.values(p.eq)) if (it) { atk += it.atk; def += it.def; mh += it.hp; }
   if (p.buffs.atk > Date.now()) atk *= 1.35;
+  if (p.dbgMul) atk *= p.dbgMul; // test-only (EM_DEBUG)
+  if (p.god) { def += 1e6; mh += 1e5; }
   p.st = { atk, def, mh: Math.round(mh), range: c.range };
   if (p.hp > p.st.mh) p.hp = p.st.mh;
 }
@@ -191,14 +205,15 @@ function login(ws, m) {
   p.chatAt = 0; p.sprintUntil = 0; p.party = 0; p.invite = null; p.invAt = 0;
   computeStats(p);
   if (!saved) p.hp = p.st.mh;
-  const spot = nearestFree(saved ? p.x : world.spawn.x, saved ? p.y : world.spawn.y) || nearestFree(world.spawn.x, world.spawn.y);
+  p.z = overworld; p.ret = { x: CAMP.x, y: CAMP.y + 2 };
+  const spot = nearestFree(overworld, saved ? p.x : world.spawn.x, saved ? p.y : world.spawn.y) || nearestFree(overworld, world.spawn.x, world.spawn.y);
   p.x = spot.x; p.y = spot.y;
   if (p.hp <= 0) p.hp = p.st.mh;
   place(p);
   players.set(p.id, p);
   ws.player = p;
   send(p, {
-    t: 'welcome', id: p.id, seed: SEED, npcs: npcs.map(({ id, key: kk, name: nn, role, x, y }) => ({ id, key: kk, name: nn, role, x, y })),
+    t: 'welcome', id: p.id, seed: SEED, zone: zoneMsg(overworld),
     classes: Object.keys(CLASSES),
   });
   send(p, meMsg(p));
@@ -236,7 +251,7 @@ function leaveParty(p, why = 'left the party') {
 }
 function partyTick() {
   for (const pt of parties.values()) {
-    const m = [...pt.members].map((id) => players.get(id)).filter(Boolean).map((q) => ({ id: q.id, h: q.hp, mh: q.st.mh, x: q.x, y: q.y }));
+    const m = [...pt.members].map((id) => players.get(id)).filter(Boolean).map((q) => ({ id: q.id, h: q.hp, mh: q.st.mh, x: q.x, y: q.y, z: q.z.id }));
     for (const id of pt.members) { const q = players.get(id); if (q) send(q, { t: 'pm', m }); }
   }
 }
@@ -282,17 +297,17 @@ function dropPlayer(p) {
   writeSaves();
   unplace(p);
   players.delete(p.id);
-  for (const m of mobs.values()) if (m.target === p.id) m.target = null;
+  for (const m of p.z.mobs.values()) if (m.target === p.id) m.target = null;
   sayAll(`${p.name} has left.`, '#888');
 }
 
 function tryMove(p, dx, dy, now) {
   p.f = face(dx, dy);
   const nx = p.x + dx, ny = p.y + dy;
-  if (!free(nx, ny)) return false;
+  if (!free(p.z, nx, ny)) return false;
   unplace(p); p.x = nx; p.y = ny; place(p);
   p.moveAt = now + (p.sprintUntil > now ? 95 : 150);
-  for (const d of drops.values()) if (d.x === nx && d.y === ny) pickup(p, d);
+  for (const d of p.z.drops.values()) if (d.x === nx && d.y === ny) pickup(p, d);
   return true;
 }
 
@@ -305,7 +320,7 @@ function pickup(p, d) {
   } else {
     return log(p, 'Your pack is full.', '#ff8a8a');
   }
-  drops.delete(d.id);
+  p.z.drops.delete(d.id);
   p.dirty = true;
   send(p, { t: 'ev', e: 'pickup' });
 }
@@ -322,7 +337,7 @@ function giveXp(p, amount) {
   if (up) {
     computeStats(p);
     p.hp = p.st.mh;
-    emit(p.x, p.y, { e: 'fx', k: 'levelup', x: p.x, y: p.y, id: p.id });
+    emit(p.z, p.x, p.y, { e: 'fx', k: 'levelup', x: p.x, y: p.y, id: p.id });
     log(p, `Level up! You are now level ${p.lvl}.`, '#ffe066');
     sayAll(`${p.name} reached level ${p.lvl}!`, '#ffe066');
   }
@@ -335,34 +350,37 @@ function hurtPlayer(p, raw, from) {
   const amt = Math.max(1, Math.round(raw * (1 - red)));
   p.hp -= amt;
   p.lastHit = Date.now();
-  emit(p.x, p.y, { e: 'dmg', x: p.x, y: p.y, v: amt, k: 'p', id: p.id });
+  emit(p.z, p.x, p.y, { e: 'dmg', x: p.x, y: p.y, v: amt, k: 'p', id: p.id });
   p.dirty = true;
   if (p.hp <= 0) {
     p.hp = 0; p.dead = true; p.respawnAt = Date.now() + 4000; p.target = null; p.want = null;
-    emit(p.x, p.y, { e: 'fx', k: 'die', x: p.x, y: p.y, id: p.id });
+    emit(p.z, p.x, p.y, { e: 'fx', k: 'die', x: p.x, y: p.y, id: p.id });
     log(p, `You were slain by ${from}. Returning to town...`, '#ff6a6a');
   }
 }
 
 function respawn(p) {
   unplace(p);
-  const s = nearestFree(world.spawn.x, world.spawn.y);
+  const left = p.z !== overworld;
+  p.z = overworld; // dying in an instance sends you back to town
+  const s = nearestFree(overworld, world.spawn.x, world.spawn.y);
   p.x = s.x; p.y = s.y; place(p);
+  if (left) send(p, zoneMsg(overworld));
   p.dead = false; p.hp = p.st.mh; p.dirty = true;
-  emit(p.x, p.y, { e: 'fx', k: 'heal', x: p.x, y: p.y, id: p.id });
+  emit(p.z, p.x, p.y, { e: 'fx', k: 'heal', x: p.x, y: p.y, id: p.id });
 }
 
 // ---------------------------------------------------------------- mobs
-function spawnMob(type, x, y) {
+function spawnMob(z, type, x, y) {
   const def = MOBS[type];
   const lvl = def.boss ? def.lvl : Math.max(1, def.lvl + ri(-1, 1));
   const m = {
-    id: nextId++, k: 'm', type, x, y, hx: x, hy: y, f: 0, lvl,
+    id: nextId++, k: 'm', z, type, x, y, hx: x, hy: y, f: 0, lvl,
     mh: Math.round(def.hp * (1 + (lvl - def.lvl) * 0.12)), hp: 0, target: null, returning: false,
     moveAt: 0, atkAt: 0, wanderAt: 0, stunUntil: 0, slowUntil: 0, dead: false, respawnAt: 0, dmgBy: new Map(),
   };
   m.hp = m.mh;
-  mobs.set(m.id, m);
+  z.mobs.set(m.id, m);
   place(m);
   return m;
 }
@@ -373,10 +391,10 @@ function populate() {
     while (made < n && tries++ < n * 60) {
       const a = Math.random() * Math.PI * 2, r = rand(r0, r1);
       const x = Math.round(cx + Math.cos(a) * r), y = Math.round(cy + Math.sin(a) * r);
-      if (!mobFree(x, y) || inTown(x, y)) continue;
+      if (!mobFree(overworld, x, y)) continue;
       if (grounds && !grounds.includes(world.g[key(x, y)])) continue;
       if (world.g[key(x, y)] === G.PATH && Math.random() < 0.7) continue;
-      spawnMob(type, x, y); made++;
+      spawnMob(overworld, type, x, y); made++;
     }
   };
   around('slime', 40, TOWN.cx, TOWN.cy, 15, 30, [G.GRASS, G.FOREST]);
@@ -385,8 +403,8 @@ function populate() {
   around('goblin', 28, TOWN.cx, TOWN.cy, 34, 52, [G.FOREST, G.SWAMP]);
   around('skeleton', 16, CAMP.x, CAMP.y, 0, 13);
   around('skeleton', 10, BOSS.x, BOSS.y, 11, 20);
-  const b = nearestFree(BOSS.x, BOSS.y, mobFree);
-  spawnMob('golem', b.x, b.y);
+  const b = nearestFree(overworld, BOSS.x, BOSS.y, mobFree);
+  spawnMob(overworld, 'golem', b.x, b.y);
 }
 
 function stepMob(m, tx, ty, now) {
@@ -397,7 +415,7 @@ function stepMob(m, tx, ty, now) {
   const side = Math.random() < 0.5 ? 1 : -1;
   tries.push(horizFirst ? [0, side] : [side, 0]);
   for (const [sx, sy] of tries) {
-    if ((sx || sy) && mobFree(m.x + sx, m.y + sy)) {
+    if ((sx || sy) && mobFree(m.z, m.x + sx, m.y + sy)) {
       unplace(m); m.x += sx; m.y += sy; place(m); m.f = face(sx, sy);
       m.moveAt = now + def.moveMs * (m.slowUntil > now ? 1.7 : 1);
       return true;
@@ -411,7 +429,7 @@ function mobAI(m, now) {
   const def = MOBS[m.type];
   if (m.dead) {
     if (now >= m.respawnAt) {
-      const s = nearestFree(m.hx, m.hy, mobFree, 3);
+      const s = nearestFree(m.z, m.hx, m.hy, mobFree, 3);
       if (!s) { m.respawnAt = now + 2000; return; }
       m.x = s.x; m.y = s.y; m.hp = m.mh; m.dead = false; m.target = null; m.dmgBy.clear(); place(m);
     }
@@ -419,13 +437,13 @@ function mobAI(m, now) {
   }
   if (now < m.stunUntil) return;
   let t = m.target ? players.get(m.target) : null;
-  if (t && (t.dead || inTown(t.x, t.y) || dist(m, t) > def.leash + 6 || Math.hypot(m.x - m.hx, m.y - m.hy) > def.leash + 10)) {
+  if (t && (t.dead || t.z !== m.z || safeAt(m.z, t.x, t.y) || dist(m, t) > def.leash + 6 || Math.hypot(m.x - m.hx, m.y - m.hy) > def.leash + 10)) {
     t = null; m.target = null; m.returning = true;
   }
   if (!t && !m.returning) {
     let best = null, bd = def.aggro;
     for (const p of players.values()) {
-      if (p.dead || inTown(p.x, p.y)) continue;
+      if (p.z !== m.z || p.dead || safeAt(m.z, p.x, p.y)) continue;
       const d = dist(m, p);
       if (d <= bd) { bd = d; best = p; }
     }
@@ -438,7 +456,7 @@ function mobAI(m, now) {
       if (now >= m.atkAt) {
         m.atkAt = now + def.atkMs;
         const raw = ri(def.dmg[0], def.dmg[1]) * (1 + (m.lvl - def.lvl) * 0.1);
-        emit(m.x, m.y, { e: 'fx', k: def.range > 2.5 ? 'arrow' : 'swing', x: m.x, y: m.y, tx: t.x, ty: t.y, id: m.id });
+        emit(m.z, m.x, m.y, { e: 'fx', k: def.range > 2.5 ? 'arrow' : 'swing', x: m.x, y: m.y, tx: t.x, ty: t.y, id: m.id });
         hurtPlayer(t, raw, def.name);
       }
     } else if (now >= m.moveAt) {
@@ -451,7 +469,7 @@ function mobAI(m, now) {
     m.wanderAt = now + rand(2000, 6000);
     const sx = pick([-1, 0, 1]), sy = sx ? 0 : pick([-1, 1]);
     const nx = m.x + sx, ny = m.y + sy;
-    if (Math.hypot(nx - m.hx, ny - m.hy) <= 5 && mobFree(nx, ny)) {
+    if (Math.hypot(nx - m.hx, ny - m.hy) <= 5 && mobFree(m.z, nx, ny)) {
       unplace(m); m.x = nx; m.y = ny; place(m); m.f = face(sx, sy);
     }
   }
@@ -460,9 +478,9 @@ function mobAI(m, now) {
 function dropLoot(m) {
   const def = MOBS[m.type];
   const put = (item, gold) => {
-    const s = nearestFree(m.x, m.y, (x, y) => !solid(x, y) && ![...drops.values()].some((d) => d.x === x && d.y === y), 3) || { x: m.x, y: m.y };
+    const s = nearestFree(m.z, m.x, m.y, (z, x, y) => !solid(z, x, y) && ![...z.drops.values()].some((d) => d.x === x && d.y === y), 3) || { x: m.x, y: m.y };
     const d = { id: nextId++, x: s.x, y: s.y, exp: Date.now() + 90000, gold, item };
-    drops.set(d.id, d);
+    m.z.drops.set(d.id, d);
   };
   put(null, ri(def.gold[0], def.gold[1]));
   if (Math.random() < (def.boss ? 1 : 0.28)) {
@@ -475,8 +493,8 @@ function dropLoot(m) {
 
 function killMob(m, killer) {
   const def = MOBS[m.type];
-  m.dead = true; m.respawnAt = Date.now() + def.respawn; unplace(m);
-  emit(m.x, m.y, { e: 'fx', k: 'die', x: m.x, y: m.y, id: m.id });
+  m.dead = true; m.respawnAt = m.z.kind === 'dungeon' ? Infinity : Date.now() + def.respawn; unplace(m);
+  emit(m.z, m.x, m.y, { e: 'fx', k: 'die', x: m.x, y: m.y, id: m.id });
   dropLoot(m);
   let total = 0;
   for (const v of m.dmgBy.values()) total += v;
@@ -484,10 +502,10 @@ function killMob(m, killer) {
   const credit = new Map();
   for (const [pid, dmg] of m.dmgBy) {
     const p = players.get(pid);
-    if (!p || p.dead || dist(p, m) > 25) continue;
+    if (!p || p.dead || p.z !== m.z || dist(p, m) > 25) continue;
     const pt = partyOf(p);
     if (pt) {
-      const near = [...pt.members].map((id) => players.get(id)).filter((q) => q && !q.dead && dist(q, m) <= 25);
+      const near = [...pt.members].map((id) => players.get(id)).filter((q) => q && !q.dead && q.z === m.z && dist(q, m) <= 25);
       for (const q of near) if (!credit.has(q.id)) credit.set(q.id, (1 + 0.1 * (near.length - 1)) / near.length);
     } else {
       credit.set(pid, pid === killer.id ? 1 : Math.min(0.6, dmg / Math.max(1, total)));
@@ -506,7 +524,11 @@ function killMob(m, killer) {
     p.dirty = true;
   }
   for (const p of players.values()) if (p.target === m.id) { p.target = null; p.dirty = true; }
-  if (def.boss) sayAll(`${killer.name} has slain the ${def.name}!`, '#ff9a3a');
+  if (def.boss && m.z.kind === 'world') sayAll(`${killer.name} has slain the ${def.name}!`, '#ff9a3a');
+  if (def.boss && m.z.kind === 'dungeon') {
+    for (const q of players.values()) if (q.z === m.z) log(q, `The ${def.name} falls! The crypt falls silent. Loot the room, then leave through the exit portal.`, '#ff9a3a');
+    sayAll(`${killer.name} has conquered the Sunken Crypt!`, '#ff9a3a');
+  }
 }
 
 function damageMob(p, m, amount, crit = false) {
@@ -515,18 +537,18 @@ function damageMob(p, m, amount, crit = false) {
   m.hp -= amt;
   m.dmgBy.set(p.id, (m.dmgBy.get(p.id) || 0) + amt);
   if (!m.target || Math.random() < 0.15) { m.target = p.id; m.returning = false; }
-  emit(m.x, m.y, { e: 'dmg', x: m.x, y: m.y, v: amt, k: crit ? 'c' : 'm', id: m.id });
+  emit(m.z, m.x, m.y, { e: 'dmg', x: m.x, y: m.y, v: amt, k: crit ? 'c' : 'm', id: m.id });
   if (m.hp <= 0) killMob(m, p);
 }
 
 // ---------------------------------------------------------------- combat & skills
-const liveMobs = () => [...mobs.values()].filter((m) => !m.dead);
+const liveMobs = (z) => [...z.mobs.values()].filter((m) => !m.dead);
 function nearestMob(p, range) {
   let best = null, bd = range;
-  for (const m of liveMobs()) { const d = dist(p, m); if (d <= bd) { bd = d; best = m; } }
+  for (const m of liveMobs(p.z)) { const d = dist(p, m); if (d <= bd) { bd = d; best = m; } }
   return best;
 }
-const targetOf = (p) => { const m = p.target && mobs.get(p.target); return m && !m.dead ? m : null; };
+const targetOf = (p) => { const m = p.target && p.z.mobs.get(p.target); return m && !m.dead ? m : null; };
 
 function basicAttack(p, m, now) {
   const c = CLASSES[p.cls];
@@ -535,7 +557,7 @@ function basicAttack(p, m, now) {
   const dmg = p.st.atk * (0.85 + Math.random() * 0.3) * (crit ? 1.8 : 1);
   const k = p.cls === 'warrior' ? 'swing' : p.cls === 'mage' ? 'bolt' : 'arrow';
   p.f = Math.abs(m.x - p.x) >= Math.abs(m.y - p.y) ? (m.x > p.x ? 3 : 2) : (m.y > p.y ? 0 : 1);
-  emit(p.x, p.y, { e: 'fx', k, x: p.x, y: p.y, tx: m.x, ty: m.y, id: p.id });
+  emit(p.z, p.x, p.y, { e: 'fx', k, x: p.x, y: p.y, tx: m.x, ty: m.y, id: p.id });
   damageMob(p, m, dmg, crit);
 }
 
@@ -554,7 +576,7 @@ function useSkill(p, n, now) {
     p.f = Math.abs(t.x - p.x) >= Math.abs(t.y - p.y) ? (t.x > p.x ? 3 : 2) : (t.y > p.y ? 0 : 1);
     return true;
   };
-  const around = (r) => liveMobs().filter((m) => dist(p, m) <= r);
+  const around = (r) => liveMobs(p.z).filter((m) => dist(p, m) <= r);
   const atk = p.st.atk;
   let ok = false;
   const cls = p.cls;
@@ -562,52 +584,52 @@ function useSkill(p, n, now) {
     if (n === 1) {
       const hit = around(1.9);
       if (!hit.length) { log(p, 'No enemies nearby.', '#ff8a8a'); return; }
-      emit(p.x, p.y, { e: 'fx', k: 'cleave', x: p.x, y: p.y, id: p.id });
+      emit(p.z, p.x, p.y, { e: 'fx', k: 'cleave', x: p.x, y: p.y, id: p.id });
       for (const m of hit) damageMob(p, m, atk * 1.4 * rand(0.9, 1.1));
       ok = true;
     } else if (n === 2) {
       if (!need(1.6)) return;
-      emit(t.x, t.y, { e: 'fx', k: 'bash', x: t.x, y: t.y, id: p.id });
+      emit(t.z, t.x, t.y, { e: 'fx', k: 'bash', x: t.x, y: t.y, id: p.id });
       t.stunUntil = now + 2000;
       damageMob(p, t, atk * rand(0.95, 1.1)); ok = true;
     } else {
       p.buffs.atk = now + 8000; computeStats(p);
       p.hp = Math.min(p.st.mh, p.hp + Math.round(p.st.mh * 0.15));
-      emit(p.x, p.y, { e: 'fx', k: 'cry', x: p.x, y: p.y, id: p.id }); ok = true;
+      emit(p.z, p.x, p.y, { e: 'fx', k: 'cry', x: p.x, y: p.y, id: p.id }); ok = true;
     }
   } else if (cls === 'mage') {
     if (n === 1) {
       if (!need(7)) return;
-      emit(p.x, p.y, { e: 'fx', k: 'fire', x: p.x, y: p.y, tx: t.x, ty: t.y, id: p.id });
+      emit(p.z, p.x, p.y, { e: 'fx', k: 'fire', x: p.x, y: p.y, tx: t.x, ty: t.y, id: p.id });
       damageMob(p, t, atk * 2.4 * rand(0.9, 1.1)); ok = true;
     } else if (n === 2) {
       const hit = around(3.2);
       if (!hit.length) { log(p, 'No enemies nearby.', '#ff8a8a'); return; }
-      emit(p.x, p.y, { e: 'fx', k: 'nova', x: p.x, y: p.y, id: p.id });
+      emit(p.z, p.x, p.y, { e: 'fx', k: 'nova', x: p.x, y: p.y, id: p.id });
       for (const m of hit) { m.slowUntil = now + 4000; damageMob(p, m, atk * 1.3 * rand(0.9, 1.1)); }
       ok = true;
     } else {
       const h = Math.round(p.st.mh * 0.45);
       p.hp = Math.min(p.st.mh, p.hp + h);
-      emit(p.x, p.y, { e: 'fx', k: 'heal', x: p.x, y: p.y, id: p.id });
-      emit(p.x, p.y, { e: 'dmg', x: p.x, y: p.y, v: h, k: 'h', id: p.id }); ok = true;
+      emit(p.z, p.x, p.y, { e: 'fx', k: 'heal', x: p.x, y: p.y, id: p.id });
+      emit(p.z, p.x, p.y, { e: 'dmg', x: p.x, y: p.y, v: h, k: 'h', id: p.id }); ok = true;
     }
   } else {
     if (n === 1) {
       if (!need(8)) return;
-      emit(p.x, p.y, { e: 'fx', k: 'arrow', x: p.x, y: p.y, tx: t.x, ty: t.y, id: p.id, big: 1 });
+      emit(p.z, p.x, p.y, { e: 'fx', k: 'arrow', x: p.x, y: p.y, tx: t.x, ty: t.y, id: p.id, big: 1 });
       damageMob(p, t, atk * 2.3 * rand(0.9, 1.1)); ok = true;
     } else if (n === 2) {
       const hit = around(7).sort((a, b) => dist(p, a) - dist(p, b)).slice(0, 4);
       if (!hit.length) { log(p, 'No enemies in range.', '#ff8a8a'); return; }
       for (const m of hit) {
-        emit(p.x, p.y, { e: 'fx', k: 'arrow', x: p.x, y: p.y, tx: m.x, ty: m.y, id: p.id });
+        emit(p.z, p.x, p.y, { e: 'fx', k: 'arrow', x: p.x, y: p.y, tx: m.x, ty: m.y, id: p.id });
         damageMob(p, m, atk * 1.3 * rand(0.9, 1.1));
       }
       ok = true;
     } else {
       p.sprintUntil = now + 6000;
-      emit(p.x, p.y, { e: 'fx', k: 'dash', x: p.x, y: p.y, id: p.id }); ok = true;
+      emit(p.z, p.x, p.y, { e: 'fx', k: 'dash', x: p.x, y: p.y, id: p.id }); ok = true;
     }
   }
   if (ok) {
@@ -618,10 +640,97 @@ function useSkill(p, n, now) {
   }
 }
 
+// ---------------------------------------------------------------- zones & dungeon instances
+const zoneMsg = (z) => ({
+  t: 'zone', id: z.id, kind: z.kind, seed: z.seed || SEED, name: z.kind === 'dungeon' ? 'The Sunken Crypt' : 'Eldermoor',
+  npcs: z.npcs.map(({ id, key: kk, name, role, x, y }) => ({ id, key: kk, name, role, x, y })),
+});
+
+function moveToZone(p, z, x, y) {
+  unplace(p);
+  p.z = z; p.x = x; p.y = y; place(p);
+  p.target = null; p.want = null; p.dirty = true;
+  send(p, zoneMsg(z));
+}
+
+function populateDungeon(z) {
+  const fill = (rm, type) => {
+    for (let tries = 0; tries < 40; tries++) {
+      const x = rm.x + 1 + Math.floor(Math.random() * (rm.w - 2)), y = rm.y + 1 + Math.floor(Math.random() * (rm.h - 2));
+      if (mobFree(z, x, y)) { spawnMob(z, type, x, y); return; }
+    }
+  };
+  const mixes = [null, ['skeleton', 'ghoul'], ['skeleton', 'ghoul'], ['ghoul', 'wraith'], ['ghoul', 'wraith'], ['wraith', 'skeleton'], ['wraith', 'ghoul']];
+  z.world.rooms.forEach((rm, i) => {
+    if (rm.entry) return;
+    if (rm.boss) {
+      const b = nearestFree(z, rm.cx, rm.cy, mobFree, 4);
+      spawnMob(z, 'bonelord', b.x, b.y);
+      for (let k = 0; k < 6; k++) fill(rm, k % 2 ? 'skeleton' : 'wraith');
+      return;
+    }
+    for (let k = 0; k < 4 + (i >> 1); k++) fill(rm, mixes[i][k % 2]);
+  });
+}
+
+function makeDungeon(k) {
+  const seed = DUNGEON_SEED + (nextInstance % 7);
+  const z = makeZone(`crypt${nextInstance++}`, 'dungeon', generateDungeon(seed));
+  z.seed = seed; z.key = k;
+  const e = z.world.exit;
+  z.npcs = [{ id: EXIT_ID, k: 'n', key: 'portal', name: 'Exit', role: 'portal', x: e.x, y: e.y }];
+  for (const n of z.npcs) z.occ.set(key(n.x, n.y), n);
+  populateDungeon(z);
+  zones.set(z.id, z); instances.set(k, z);
+  return z;
+}
+
+// One instance per party (or per solo hero): party members who step through later share it.
+function enterDungeon(p) {
+  if (p.dead) return;
+  const k = p.party ? `p${p.party}` : `u${p.id}`;
+  const z = instances.get(k) || makeDungeon(k);
+  z.emptyAt = 0;
+  const s = nearestFree(z, z.world.spawn.x, z.world.spawn.y);
+  if (p.lvl < DUNGEON_REC_LVL) log(p, `The crypt is deadly below level ${DUNGEON_REC_LVL}. Tread carefully.`, '#ff9a3a');
+  moveToZone(p, z, s.x, s.y);
+  log(p, 'You step through the portal into the Sunken Crypt...', '#c06bff');
+}
+
+function leaveDungeon(p) {
+  const s = nearestFree(overworld, p.ret.x, p.ret.y);
+  moveToZone(p, overworld, s.x, s.y);
+  log(p, 'You return to the surface.', '#c06bff');
+}
+
+function reapInstances(now) {
+  for (const z of zones.values()) {
+    if (z === overworld) continue;
+    if ([...players.values()].some((p) => p.z === z)) { z.emptyAt = 0; continue; }
+    if (!z.emptyAt) z.emptyAt = now;
+    else if (now - z.emptyAt > INSTANCE_TTL) { zones.delete(z.id); instances.delete(z.key); }
+  }
+}
+
+// Only reachable when the server is started with EM_DEBUG=1 (used by the tests).
+function debugCmd(p, m) {
+  if (Array.isArray(m.tp)) {
+    const x = m.tp[0] | 0, y = m.tp[1] | 0;
+    if (free(p.z, x, y)) { unplace(p); p.x = x; p.y = y; place(p); }
+  }
+  if (m.atkMul) p.dbgMul = Number(m.atkMul) || 0;
+  if (m.god) p.god = true;
+  if (m.lvl) p.lvl = Math.max(1, Math.min(MAX_LEVEL, m.lvl | 0));
+  computeStats(p);
+  if (m.god || m.lvl) p.hp = p.st.mh;
+  p.dirty = true;
+}
+
 // ---------------------------------------------------------------- npc interaction
 function talk(p, id) {
-  const n = npcs.find((x) => x.id === id);
+  const n = p.z.npcs.find((x) => x.id === id);
   if (!n || dist(p, n) > 4.5) return;
+  if (n.role === 'portal') return p.z === overworld ? enterDungeon(p) : leaveDungeon(p);
   if (n.role === 'lore') return send(p, { t: 'dialog', npc: n.id, name: n.name, text: n.text });
   if (n.role === 'shop') {
     return send(p, {
@@ -657,7 +766,7 @@ function onMessage(ws, raw) {
     }
     case 'target': {
       const id = m.id | 0;
-      p.target = id && mobs.has(id) && !mobs.get(id).dead ? id : null;
+      p.target = id && p.z.mobs.has(id) && !p.z.mobs.get(id).dead ? id : null;
       p.dirty = true;
       break;
     }
@@ -688,14 +797,14 @@ function onMessage(ws, raw) {
     case 'talk': talk(p, m.id | 0); break;
     case 'questAccept': {
       const n = npcByRole('quest');
-      if (dist(p, n) > 4.5 || p.quest.i >= QUESTS.length || p.quest.s !== 0) return;
+      if (!nearNpc(p, n) || p.quest.i >= QUESTS.length || p.quest.s !== 0) return;
       p.quest.s = 1; p.quest.p = 0; p.dirty = true;
       log(p, `Quest accepted: ${QUESTS[p.quest.i].title}`, '#ffe066');
       break;
     }
     case 'questTurnIn': {
       const n = npcByRole('quest'), q = p.quest;
-      if (dist(p, n) > 4.5 || q.i >= QUESTS.length || q.s !== 2) return;
+      if (!nearNpc(p, n) || q.i >= QUESTS.length || q.s !== 2) return;
       const Q = QUESTS[q.i];
       if (Q.reward && !p.inv.includes(null)) return log(p, 'Make room in your pack first.', '#ff8a8a');
       p.gold += Q.gold;
@@ -707,7 +816,7 @@ function onMessage(ws, raw) {
     }
     case 'buy': {
       const n = npcByRole('shop'), it = SHOP[m.i | 0];
-      if (!it || dist(p, n) > 4.5) return;
+      if (!it || !nearNpc(p, n)) return;
       if (p.gold < it.price) return log(p, 'Not enough gold.', '#ff8a8a');
       const { price, ...base } = it;
       if (!addItem(p, { ...base, u: uid++, c: 1 })) return log(p, 'Your pack is full.', '#ff8a8a');
@@ -717,7 +826,7 @@ function onMessage(ws, raw) {
     }
     case 'sell': {
       const n = npcByRole('shop'), it = p.inv[m.slot | 0];
-      if (!it || dist(p, n) > 4.5) return;
+      if (!it || !nearNpc(p, n)) return;
       const gold = Math.max(1, Math.floor(it.v * 0.5)) * (it.c || 1);
       p.gold += gold; p.inv[m.slot | 0] = null; p.dirty = true;
       log(p, `Sold ${it.n} for ${gold} gold.`, '#ffd23a');
@@ -751,12 +860,13 @@ function onMessage(ws, raw) {
       const h = Math.min(it.heal, p.st.mh - p.hp);
       p.hp += h;
       if (--it.c <= 0) p.inv[i] = null;
-      emit(p.x, p.y, { e: 'dmg', x: p.x, y: p.y, v: h, k: 'h', id: p.id });
-      emit(p.x, p.y, { e: 'fx', k: 'heal', x: p.x, y: p.y, id: p.id });
+      emit(p.z, p.x, p.y, { e: 'dmg', x: p.x, y: p.y, v: h, k: 'h', id: p.id });
+      emit(p.z, p.x, p.y, { e: 'fx', k: 'heal', x: p.x, y: p.y, id: p.id });
       send(p, { t: 'ev', e: 'pot', ms: 6000 });
       p.dirty = true;
       break;
     }
+    case 'dbg': if (DEBUG) debugCmd(p, m); break;
     case 'drop': {
       const i = m.slot | 0;
       if (p.inv[i]) { p.inv[i] = null; p.dirty = true; }
@@ -773,15 +883,15 @@ function broadcast(now) {
   for (const p of players.values()) {
     const ents = [];
     for (const o of players.values()) {
-      if (Math.abs(o.x - p.x) > VX || Math.abs(o.y - p.y) > VY) continue;
+      if (o.z !== p.z || Math.abs(o.x - p.x) > VX || Math.abs(o.y - p.y) > VY) continue;
       const w = o.eq.weapon, a = o.eq.armor;
       ents.push({ i: o.id, k: 'p', x: o.x, y: o.y, f: o.f, h: o.hp, mh: o.st.mh, n: o.name, l: o.lvl, c: o.cls, d: o.dead ? 1 : 0, w: w ? w.b : '', wr: w ? w.r : 0, ar: a ? a.r : -1, sp: o.sprintUntil > now ? 1 : 0 });
     }
-    for (const m of mobs.values()) {
+    for (const m of p.z.mobs.values()) {
       if (m.dead || Math.abs(m.x - p.x) > VX || Math.abs(m.y - p.y) > VY) continue;
       ents.push({ i: m.id, k: 'm', s: m.type, x: m.x, y: m.y, f: m.f, h: m.hp, mh: m.mh, l: m.lvl, st: m.stunUntil > now ? 1 : 0 });
     }
-    for (const d of drops.values()) {
+    for (const d of p.z.drops.values()) {
       if (Math.abs(d.x - p.x) > VX || Math.abs(d.y - p.y) > VY) continue;
       ents.push({ i: d.id, k: 'd', x: d.x, y: d.y, g: d.gold ? 1 : 0, b: d.item ? d.item.b : '', r: d.item ? d.item.r : 0, n: d.item ? d.item.n : `${d.gold} gold` });
     }
@@ -813,11 +923,15 @@ function tick() {
     if (p.buffs.atk && p.buffs.atk < now) { delete p.buffs.atk; computeStats(p); p.dirty = true; }
     if (now >= p.regenAt) {
       p.regenAt = now + 1000;
-      if (p.hp < p.st.mh && now - p.lastHit > 5000) { p.hp = Math.min(p.st.mh, p.hp + Math.max(1, Math.round(p.st.mh * (inTown(p.x, p.y) ? 0.08 : 0.02)))); p.dirty = true; }
+      if (p.hp < p.st.mh && now - p.lastHit > 5000) { p.hp = Math.min(p.st.mh, p.hp + Math.max(1, Math.round(p.st.mh * (safeAt(p.z, p.x, p.y) ? 0.08 : 0.02)))); p.dirty = true; }
     }
   }
-  for (const m of mobs.values()) mobAI(m, now);
-  for (const d of drops.values()) if (now > d.exp) drops.delete(d.id);
+  for (const z of zones.values()) {
+    if (z !== overworld && z.emptyAt) continue; // an empty instance sleeps until its timeout
+    for (const m of z.mobs.values()) mobAI(m, now);
+    for (const d of z.drops.values()) if (now > d.exp) z.drops.delete(d.id);
+  }
+  if (tickN % 20 === 0) reapInstances(now);
   if (tickN % 2 === 0) broadcast(now);
   if (tickN % 10 === 0) partyTick();
 }
@@ -829,7 +943,7 @@ const server = http.createServer((req, res) => {
   if (url === '/') url = '/client/index.html';
   if (url === '/api/status') {
     res.writeHead(200, { 'content-type': 'application/json' });
-    return res.end(JSON.stringify({ name: 'eldermoor', online: players.size, parties: parties.size, mobs: liveMobs().length, uptime: Math.round(process.uptime()) }));
+    return res.end(JSON.stringify({ name: 'eldermoor', online: players.size, parties: parties.size, instances: instances.size, mobs: liveMobs(overworld).length, uptime: Math.round(process.uptime()) }));
   }
   if (!url.startsWith('/client/') && !url.startsWith('/shared/')) { res.writeHead(404); return res.end('not found'); }
   const file = path.join(ROOT, url);
@@ -853,4 +967,4 @@ setInterval(() => { for (const p of players.values()) savePlayer(p); writeSaves(
 const shutdown = () => { for (const p of players.values()) savePlayer(p); writeSaves(); process.exit(0); };
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
-server.listen(PORT, () => console.log(`Eldermoor listening on http://localhost:${PORT}  (${mobs.size} monsters)`));
+server.listen(PORT, () => console.log(`Eldermoor listening on http://localhost:${PORT}  (${overworld.mobs.size} monsters)`));
