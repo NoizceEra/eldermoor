@@ -25,7 +25,7 @@ export const WEAPON_TYPES = {
   sword: { range: 1.5, ms: 900, scale: 'str', fx: 'swing', mag: false },
   axe: { range: 1.5, ms: 1100, scale: 'str', fx: 'swing', mag: false },
   mace: { range: 1.5, ms: 1000, scale: 'str', fx: 'swing', mag: false },
-  dagger: { range: 1.5, ms: 650, scale: 'dex', fx: 'swing', mag: false },
+  dagger: { range: 1.5, ms: 780, scale: 'dex', fx: 'swing', mag: false },
   bow: { range: 7, ms: 1000, scale: 'dex', fx: 'arrow', mag: false },
   staff: { range: 6, ms: 1100, scale: 'int', fx: 'bolt', mag: true },
   wand: { range: 6, ms: 800, scale: 'int', fx: 'bolt', mag: true },
@@ -35,10 +35,10 @@ export const WEAPON_TYPES = {
 export const JOB_ORDER = ['warrior', 'mage', 'ranger', 'cleric', 'rogue', 'warlock', 'paladin', 'druid', 'necromancer', 'monk'];
 export const JOBS = {
   warrior: {
-    name: 'Warrior', role: 'Tank / melee', color: '#c03a3a', hpMul: 1.15, defMul: 1.1,
+    name: 'Warrior', role: 'Tank / melee', color: '#c03a3a', hpMul: 1.15, defMul: 1.1, dmgMul: 1.25,
     growth: { str: 0.5, vit: 0.5 }, start: 'sword',
     desc: 'Steel and stubbornness. Soaks damage and punishes everything within reach.',
-    trait: 'Iron Will: +15% max health, +10% defense.',
+    trait: 'Iron Will: +15% max health, +10% defense, +25% weapon and skill damage.',
   },
   mage: {
     name: 'Mage', role: 'Ranged magic', color: '#8a5af0', hpMul: 0.85, defMul: 1,
@@ -53,16 +53,16 @@ export const JOBS = {
     trait: "Hunter's Eye: +8% crit chance, +10% movement speed.",
   },
   cleric: {
-    name: 'Cleric', role: 'Healer / support', color: '#f0d060', hpMul: 1.05, defMul: 1.05,
+    name: 'Cleric', role: 'Healer / support', color: '#f0d060', hpMul: 1.05, defMul: 1.05, dmgMul: 1.15,
     growth: { spr: 0.7, vit: 0.25 }, start: 'mace', healMul: 1.25, regen: 0.01,
     desc: 'Keeps the party standing and smites the wicked. The best friend of a Warrior.',
-    trait: 'Devotion: +25% healing and slow health regeneration in combat.',
+    trait: 'Devotion: +25% healing, +15% damage and slow health regeneration in combat.',
   },
   rogue: {
     name: 'Rogue', role: 'Melee burst', color: '#6a6a8a', hpMul: 0.95, defMul: 0.95,
-    growth: { dex: 0.6, str: 0.25 }, start: 'dagger', critDmg: 0.35, dodgeAdd: 5,
+    growth: { dex: 0.6, str: 0.25 }, start: 'dagger', critDmg: 0.2, dodgeAdd: 5,
     desc: 'Fast knives and faster feet. Wins fights in the first three seconds.',
-    trait: 'Assassin: +35% critical damage, +5% dodge.',
+    trait: 'Assassin: +20% critical damage, +5% dodge.',
   },
   warlock: {
     name: 'Warlock', role: 'Curses / sustain', color: '#a03aa0', hpMul: 0.95, defMul: 1,
@@ -71,10 +71,10 @@ export const JOBS = {
     trait: 'Dark Bargain: heal for 8% of damage dealt.',
   },
   paladin: {
-    name: 'Paladin', role: 'Holy tank', color: '#e8d88a', hpMul: 1.1, defMul: 1.1,
+    name: 'Paladin', role: 'Holy tank', color: '#e8d88a', hpMul: 1.1, defMul: 1.1, dmgMul: 1.2,
     growth: { str: 0.4, spr: 0.3, vit: 0.3 }, start: 'sword', healMul: 1.1,
     desc: 'Armoured faith. Charges in, shrugs off blows and mends what the fight breaks.',
-    trait: 'Sworn Oath: +10% health, +10% defense, +10% healing, strong threat.',
+    trait: 'Sworn Oath: +10% health, +10% defense, +10% healing, +20% damage, strong threat.',
   },
   druid: {
     name: 'Druid', role: 'Nature healer', color: '#5fbf6a', hpMul: 1, defMul: 1,
@@ -110,10 +110,10 @@ export const SKILLS = {
   bulwark: { job: 'warrior', lvl: 17, name: 'Bulwark', cd: 45000, kind: 'shield', pct: 0.3, ms: 8000, fx: [['defUp', 8000, 0.3]], vis: 'cry', ic: ['shield', '#ffd23a'], desc: 'Gain a barrier worth 30% of your health and +30% defense for 8s.' },
   // ---- Mage
   fireball: { job: 'mage', lvl: 1, name: 'Fireball', cd: 3000, kind: 'ranged_st', range: 7, mult: 2.4, scale: 'int', mag: true, vis: 'fire', fx: [['burn', 4000, 0.25]], ic: ['flame', '#ff8a2a'], desc: 'Hurl a fireball for 240% damage. Sets the target ablaze.' },
-  frostnova: { job: 'mage', lvl: 3, name: 'Frost Nova', cd: 10000, kind: 'aoe_self', r: 3.2, mult: 1.3, scale: 'int', mag: true, vis: 'nova', fx: [['slow', 4000, 0.5]], ic: ['snow', '#8fe0ff'], desc: 'Blast nearby foes for 130% damage and slow them.' },
+  frostnova: { job: 'mage', lvl: 3, name: 'Frost Nova', cd: 10000, kind: 'aoe_self', r: 3.2, mult: 1.1, scale: 'int', mag: true, vis: 'nova', fx: [['slow', 4000, 0.5]], ic: ['snow', '#8fe0ff'], desc: 'Blast nearby foes for 110% damage and slow them.' },
   blink: { job: 'mage', lvl: 6, name: 'Blink', cd: 15000, kind: 'dash', dist: 5, blink: true, vis: 'dash', ic: ['star', '#c8a8ff'], desc: 'Teleport up to 5 tiles in the direction you face.' },
   chain: { job: 'mage', lvl: 9, name: 'Chain Lightning', cd: 9000, kind: 'ranged_st', range: 7, mult: 1.6, scale: 'int', mag: true, chain: 2, vis: 'lightning', ic: ['bolt', '#ffe866'], desc: 'Lightning that jumps to 2 more enemies.' },
-  meteor: { job: 'mage', lvl: 13, name: 'Meteor', cd: 25000, kind: 'aoe_target', range: 8, r: 2.6, mult: 4.0, scale: 'int', mag: true, warnMs: 1200, vis: 'meteor', ic: ['meteor', '#ff5a2a'], desc: 'Call a meteor onto the target area after a short delay: 400% damage.' },
+  meteor: { job: 'mage', lvl: 13, name: 'Meteor', cd: 25000, kind: 'aoe_target', range: 8, r: 2.6, mult: 3.7, scale: 'int', mag: true, warnMs: 1200, vis: 'meteor', ic: ['meteor', '#ff5a2a'], desc: 'Call a meteor onto the target area after a short delay: 370% damage.' },
   barrier: { job: 'mage', lvl: 17, name: 'Arcane Barrier', cd: 40000, kind: 'shield', pct: 0.25, ms: 10000, fx: [['haste', 10000, 0.2]], vis: 'nova', ic: ['shield', '#b08aff'], desc: 'Absorb damage worth 25% of your health and gain haste.' },
   // ---- Ranger
   powershot: { job: 'ranger', lvl: 1, name: 'Power Shot', cd: 3000, kind: 'ranged_st', range: 8, mult: 2.3, scale: 'dex', vis: 'arrow', big: 1, ic: ['arrow', '#d8d8e0'], desc: 'A drawn arrow for 230% damage.' },
@@ -123,29 +123,29 @@ export const SKILLS = {
   venom: { job: 'ranger', lvl: 13, name: 'Venom Arrow', cd: 12000, kind: 'ranged_st', range: 8, mult: 1.0, scale: 'dex', vis: 'arrow', fx: [['poison', 9000, 0.3]], ic: ['drop', '#6aff4a'], desc: 'Poison that deals 30% damage every second for 9s.' },
   rain: { job: 'ranger', lvl: 17, name: 'Arrow Rain', cd: 22000, kind: 'aoe_target', range: 8, r: 3.0, mult: 3.2, scale: 'dex', warnMs: 800, vis: 'rain', ic: ['arrows', '#ffd23a'], desc: 'Arrows fall over an area after a short delay: 320% damage.' },
   // ---- Cleric
-  smite: { job: 'cleric', lvl: 1, name: 'Smite', cd: 3000, kind: 'ranged_st', range: 6, mult: 1.9, scale: 'spr', mag: true, vis: 'holy', ic: ['sun', '#fff2a0'], desc: 'Holy damage at range: 190% (scales with Spirit).' },
+  smite: { job: 'cleric', lvl: 1, name: 'Smite', cd: 3000, kind: 'ranged_st', range: 6, mult: 2.3, scale: 'spr', mag: true, vis: 'holy', ic: ['sun', '#fff2a0'], desc: 'Holy damage at range: 230% (scales with Spirit).' },
   heal: { job: 'cleric', lvl: 3, name: 'Heal', cd: 6000, kind: 'heal', range: 8, mult: 3.0, vis: 'heal', ic: ['cross', '#6aff8a'], desc: 'Heal yourself or the most wounded party member in range.' },
   bless: { job: 'cleric', lvl: 6, name: 'Blessing', cd: 25000, kind: 'buff_party', r: 8, fx: [['atkUp', 12000, 0.2], ['defUp', 12000, 0.2]], vis: 'cry', ic: ['star', '#fff2a0'], desc: '+20% damage and defense for you and nearby party members for 12s.' },
   renew: { job: 'cleric', lvl: 9, name: 'Renew', cd: 16000, kind: 'hot', range: 8, mult: 0.6, ms: 10000, vis: 'heal', ic: ['cross', '#aaffcc'], desc: 'Heal over 10s: 60% of your healing power every second.' },
   holynova: { job: 'cleric', lvl: 13, name: 'Holy Nova', cd: 15000, kind: 'nova_heal', r: 3.5, mult: 1.6, scale: 'spr', mag: true, healMult: 1.5, vis: 'nova', ic: ['sun', '#ffffff'], desc: 'Damage nearby enemies and heal nearby allies.' },
   aegis: { job: 'cleric', lvl: 17, name: 'Divine Shield', cd: 50000, kind: 'buff_self', fx: [['invuln', 4000, 0]], vis: 'heal', ic: ['shield', '#fff2a0'], desc: 'Become invulnerable for 4s.' },
   // ---- Rogue
-  stab: { job: 'rogue', lvl: 1, name: 'Quick Stab', cd: 2500, kind: 'melee_st', range: 1.7, mult: 1.7, scale: 'dex', vis: 'swing', ic: ['dagger', '#d8d8e0'], desc: 'A fast stab for 170% damage.' },
-  backstab: { job: 'rogue', lvl: 3, name: 'Backstab', cd: 6000, kind: 'melee_st', range: 1.7, mult: 2.0, scale: 'dex', vis: 'swing', bonusIf: ['stun', 'slow', 'bleed', 'poison'], bonusMult: 1.6, ic: ['dagger', '#ff6a6a'], desc: '200% damage, +60% against stunned, slowed or bleeding targets.' },
+  stab: { job: 'rogue', lvl: 1, name: 'Quick Stab', cd: 2500, kind: 'melee_st', range: 1.7, mult: 1.5, scale: 'dex', vis: 'swing', ic: ['dagger', '#d8d8e0'], desc: 'A fast stab for 150% damage.' },
+  backstab: { job: 'rogue', lvl: 3, name: 'Backstab', cd: 6000, kind: 'melee_st', range: 1.7, mult: 2.0, scale: 'dex', vis: 'swing', bonusIf: ['stun', 'slow', 'bleed', 'poison'], bonusMult: 1.45, ic: ['dagger', '#ff6a6a'], desc: '200% damage, +45% against stunned, slowed or bleeding targets.' },
   evade: { job: 'rogue', lvl: 6, name: 'Evade', cd: 18000, kind: 'buff_self', fx: [['dodge', 3000, 1.0], ['haste', 3000, 0.3]], vis: 'dash', ic: ['boot', '#6a6a8a'], desc: 'Dodge everything for 3s and run faster.' },
   rupture: { job: 'rogue', lvl: 9, name: 'Rupture', cd: 10000, kind: 'melee_st', range: 1.7, mult: 1.0, scale: 'dex', vis: 'swing', fx: [['bleed', 8000, 0.35]], ic: ['drop', '#c03a3a'], desc: 'Open a wound that bleeds for 35% damage a second for 8s.' },
   smoke: { job: 'rogue', lvl: 13, name: 'Smoke Bomb', cd: 25000, kind: 'cc_aoe', r: 3.2, mult: 0.6, scale: 'dex', fx: [['slow', 4000, 0.4]], dropThreat: true, vis: 'nova', col: '#9a9aaa', ic: ['bomb', '#9a9aaa'], desc: 'Blind nearby enemies: they slow down and forget you.' },
-  assassinate: { job: 'rogue', lvl: 17, name: 'Assassinate', cd: 30000, kind: 'melee_st', range: 1.7, mult: 5.0, scale: 'dex', vis: 'swing', execute: [0.3, 3.0], ic: ['skull', '#ff4a4a'], desc: '500% damage; triples against targets under 30% health.' },
+  assassinate: { job: 'rogue', lvl: 17, name: 'Assassinate', cd: 30000, kind: 'melee_st', range: 1.7, mult: 4.0, scale: 'dex', vis: 'swing', execute: [0.3, 3.0], ic: ['skull', '#ff4a4a'], desc: '400% damage; triples against targets under 30% health.' },
   // ---- Warlock
   shadowbolt: { job: 'warlock', lvl: 1, name: 'Shadow Bolt', cd: 3000, kind: 'ranged_st', range: 6, mult: 2.0, scale: 'int', mag: true, vis: 'shadow', ic: ['orb', '#a03aa0'], desc: 'A bolt of shadow for 200% damage.' },
   drain: { job: 'warlock', lvl: 3, name: 'Drain Life', cd: 8000, kind: 'ranged_st', range: 6, mult: 1.4, scale: 'int', mag: true, vis: 'shadow', leech: 1.0, ic: ['drop', '#d060d0'], desc: 'Damage the target and heal yourself for the same amount.' },
-  curse: { job: 'warlock', lvl: 6, name: 'Curse of Frailty', cd: 16000, kind: 'ranged_st', range: 7, mult: 0.5, scale: 'int', mag: true, vis: 'shadow', fx: [['vuln', 10000, 0.25]], ic: ['skull', '#8a3a8a'], desc: 'The target takes 25% more damage from everyone for 10s.' },
-  terrify: { job: 'warlock', lvl: 9, name: 'Terrify', cd: 20000, kind: 'cc_aoe', r: 4, mult: 0.4, scale: 'int', fx: [['fear', 3000, 0]], vis: 'nova', col: '#a03aa0', ic: ['eye', '#c060c0'], desc: 'Nearby enemies flee in terror for 3s.' },
+  curse: { job: 'warlock', lvl: 6, name: 'Curse of Frailty', cd: 16000, kind: 'ranged_st', range: 7, mult: 0.7, scale: 'int', mag: true, vis: 'shadow', fx: [['vuln', 10000, 0.25]], ic: ['skull', '#8a3a8a'], desc: 'The target takes 25% more damage from everyone for 10s.' },
+  terrify: { job: 'warlock', lvl: 9, name: 'Terrify', cd: 20000, kind: 'cc_aoe', r: 4, mult: 1.5, scale: 'int', fx: [['fear', 3000, 0]], vis: 'nova', col: '#a03aa0', ic: ['eye', '#c060c0'], desc: 'Nearby enemies flee in terror for 3s.' },
   soulburn: { job: 'warlock', lvl: 13, name: 'Soul Burn', cd: 12000, kind: 'ranged_st', range: 6, mult: 1.0, scale: 'int', mag: true, vis: 'shadow', fx: [['burn', 10000, 0.4]], ic: ['flame', '#b050ff'], desc: 'Burns the soul for 40% damage a second for 10s.' },
   pact: { job: 'warlock', lvl: 17, name: 'Dark Pact', cd: 40000, kind: 'sacrifice', hpPct: 0.2, fx: [['atkUp', 10000, 0.5]], vis: 'cry', ic: ['skull', '#ff3aff'], desc: 'Sacrifice 20% of your health for +50% damage for 10s.' },
   // ---- Paladin
   crusader: { job: 'paladin', lvl: 1, name: 'Crusader Strike', cd: 3000, kind: 'melee_st', range: 1.7, mult: 1.8, scale: 'str', vis: 'swing', ic: ['slash', '#ffe9a0'], desc: 'A blessed blow for 180% damage.' },
-  layhands: { job: 'paladin', lvl: 3, name: 'Lay on Hands', cd: 24000, kind: 'heal', range: 8, mult: 4.0, ic: ['cross', '#fff2a0'], vis: 'heal', desc: 'A powerful heal on you or the most wounded ally.' },
+  layhands: { job: 'paladin', lvl: 3, name: 'Lay on Hands', cd: 18000, kind: 'heal', range: 8, mult: 5.0, ic: ['cross', '#fff2a0'], vis: 'heal', desc: 'A powerful heal on you or the most wounded ally.' },
   charge: { job: 'paladin', lvl: 6, name: 'Righteous Charge', cd: 14000, kind: 'charge', range: 6, mult: 1.3, scale: 'str', vis: 'dash', fx: [['stun', 1500, 0]], ic: ['horn', '#e8d88a'], desc: 'Rush a distant foe, strike for 130% and stun it for 1.5s.' },
   consecrate: { job: 'paladin', lvl: 9, name: 'Consecration', cd: 12000, kind: 'aoe_self', r: 2.8, mult: 1.8, scale: 'spr', mag: true, vis: 'nova', col: '#ffe9a0', ic: ['sun', '#ffe9a0'], desc: 'Holy fire around you: 180% damage to everything nearby.' },
   judgment: { job: 'paladin', lvl: 13, name: 'Judgment', cd: 15000, kind: 'ranged_st', range: 6, mult: 2.6, scale: 'spr', mag: true, vis: 'holy', fx: [['vuln', 8000, 0.2]], ic: ['eye', '#ffe066'], desc: '260% holy damage; the target takes 20% more damage for 8s.' },
@@ -168,7 +168,7 @@ export const SKILLS = {
   flurry: { job: 'monk', lvl: 1, name: 'Flurry of Blows', cd: 3000, kind: 'melee_st', range: 1.7, mult: 0.75, hits: 3, scale: 'dex', vis: 'swing', ic: ['spin', '#ffd8a0'], desc: 'Three quick strikes for 75% damage each.' },
   palm: { job: 'monk', lvl: 3, name: 'Stunning Palm', cd: 9000, kind: 'melee_st', range: 1.7, mult: 1.3, scale: 'dex', vis: 'bash', fx: [['stun', 1500, 0]], ic: ['star', '#ffd23a'], desc: 'Strike for 130% damage and stun for 1.5s.' },
   meditate: { job: 'monk', lvl: 6, name: 'Meditate', cd: 24000, kind: 'buff_self', heal: 0.25, fx: [['defUp', 5000, 0.2]], vis: 'heal', ic: ['cross', '#8affc8'], desc: 'Recover 25% health and gain +20% defense for 5s.' },
-  dragonkick: { job: 'monk', lvl: 9, name: 'Dragon Kick', cd: 10000, kind: 'melee_st', range: 1.7, mult: 3.0, scale: 'dex', vis: 'swing', bonusIf: ['stun', 'slow', 'root'], bonusMult: 1.5, ic: ['boot', '#ff9a4a'], desc: '300% damage, +50% against stunned, slowed or rooted targets.' },
+  dragonkick: { job: 'monk', lvl: 9, name: 'Dragon Kick', cd: 10000, kind: 'melee_st', range: 1.7, mult: 2.7, scale: 'dex', vis: 'swing', bonusIf: ['stun', 'slow', 'root'], bonusMult: 1.5, ic: ['boot', '#ff9a4a'], desc: '270% damage, +50% against stunned, slowed or rooted targets.' },
   tempest: { job: 'monk', lvl: 13, name: 'Tempest Kick', cd: 12000, kind: 'aoe_self', r: 2.4, mult: 2.2, scale: 'dex', vis: 'cleave', fx: [['slow', 3000, 0.4]], ic: ['spin', '#8fe0ff'], desc: 'Spin through nearby foes for 220% damage and slow them.' },
   chisurge: { job: 'monk', lvl: 17, name: 'Chi Surge', cd: 50000, kind: 'buff_self', fx: [['haste', 8000, 0.5], ['atkUp', 8000, 0.3], ['dodge', 2000, 1.0]], vis: 'cry', ic: ['star', '#ffe8a0'], desc: 'Move and strike much faster for 8s, dodging everything for the first 2s.' },
 };

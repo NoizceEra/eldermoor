@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { SKILLS, JOBS, knownSkills, barSlots, POINTS_PER_LEVEL } from '../shared/jobs.js';
 
-const PORT = 3994;
+const PORT = 3994 + (Number(process.env.EM_TEST_PORT_OFFSET) || 0); // set EM_TEST_PORT_OFFSET to run beside another test run
 const SAVE = 'data/test-saves-jobs.json';
 
 // an old-format (v1) save to prove migration: ranger, level 12, no jobs/attr fields

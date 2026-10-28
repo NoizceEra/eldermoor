@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import { generateDungeon, isSolid, G } from '../shared/world.js';
 import { DUNGEONS, PORTAL_ID, PORTAL2_ID, EXIT_ID, MOBS } from '../shared/data.js';
 
-const PORT = 3990;
+const PORT = 3990 + (Number(process.env.EM_TEST_PORT_OFFSET) || 0); // set EM_TEST_PORT_OFFSET to run beside another test run
 const SAVE = 'data/test-saves-frozen.json';
 const srv = spawn(process.execPath, ['server/index.js'], { env: { ...process.env, PORT: String(PORT), EM_SAVE: SAVE, EM_DEBUG: '1', EM_INSTANCE_TTL: '2500' }, stdio: ['ignore', 'pipe', 'inherit'] });
 let out = '';

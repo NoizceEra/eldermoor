@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { EQ_KEYS, validLook, defaultLook, LOOK_COST, KINDS, VIS_ORDER } from '../shared/gear.js';
 
-const PORT = 3993;
+const PORT = 3993 + (Number(process.env.EM_TEST_PORT_OFFSET) || 0); // set EM_TEST_PORT_OFFSET to run beside another test run
 const SAVE = 'data/test-saves-gear.json';
 const salt = '0123456789abcdef';
 fs.mkdirSync('data', { recursive: true });

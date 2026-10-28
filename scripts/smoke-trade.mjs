@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 import { WebSocket } from 'ws';
 import fs from 'node:fs';
 
-const PORT = 3995;
+const PORT = 3995 + (Number(process.env.EM_TEST_PORT_OFFSET) || 0); // set EM_TEST_PORT_OFFSET to run beside another test run
 const SAVE = 'data/test-saves-trade.json';
 const srv = spawn(process.execPath, ['server/index.js'], { env: { ...process.env, PORT: String(PORT), EM_SAVE: SAVE, EM_DEBUG: '1' }, stdio: ['ignore', 'pipe', 'inherit'] });
 let out = '';

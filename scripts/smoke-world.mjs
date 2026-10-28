@@ -46,7 +46,7 @@ ok(NPCS.every((n) => !isSolid(world, n.x, n.y) && inTown(n.x, n.y)) && new Set(N
 for (const m of Object.values(MOBS)) if (!(m.hp > 0 && m.dmg[1] >= m.dmg[0] && m.xp > 0)) ok(false, `bad monster stats ${m.name}`);
 
 // ---------------------------------------------------------------- live server checks
-const PORT = 3992;
+const PORT = 3992 + (Number(process.env.EM_TEST_PORT_OFFSET) || 0); // set EM_TEST_PORT_OFFSET to run beside another test run
 const SAVE = 'data/test-saves-world.json';
 const srv = spawn(process.execPath, ['server/index.js'], { env: { ...process.env, PORT: String(PORT), EM_SAVE: SAVE, EM_DEBUG: '1' }, stdio: ['ignore', 'pipe', 'inherit'] });
 let out = '';

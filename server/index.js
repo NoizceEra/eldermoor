@@ -18,6 +18,7 @@ import {
 import {
   EQ_KEYS, KINDS, PALETTES, STARTER_KIT, emptyEq, eqKeyFor, defaultLook, validLook, kindName, visTokens, LOOK_COST,
 } from '../shared/gear.js';
+import { GCD_MS, deriveStats, power as combatPower, mitigation } from '../shared/combat.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SAVE_FILE = process.env.EM_SAVE || path.join(ROOT, 'data', 'saves.json');
@@ -291,35 +292,21 @@ function addFx(t, id, ms, pow = 0, src = 0) {
 }
 
 function computeStats(p) {
-  const J = JOBS[p.job], jl = Math.max(1, p.jobs[p.job].lvl);
-  const A = {};
-  for (const k of ATTRS) A[k] = ATTR_BASE + (p.attr[k] || 0) + Math.floor(jl * ((J.growth && J.growth[k]) || 0));
-  let gatk = 0, gdef = 0, ghp = 0, gcrit = 0, gdodge = 0;
+  const gear = { atk: 0, def: 0, hp: 0, crit: 0, dodge: 0, a: {} };
   for (const it of Object.values(p.eq)) {
     if (!it) continue;
-    gatk += it.atk || 0; gdef += it.def || 0; ghp += it.hp || 0; gcrit += it.crit || 0; gdodge += it.dodge || 0;
-    if (it.a) for (const k of ATTRS) A[k] += it.a[k] || 0;
+    gear.atk += it.atk || 0; gear.def += it.def || 0; gear.hp += it.hp || 0; gear.crit += it.crit || 0; gear.dodge += it.dodge || 0;
+    if (it.a) for (const k of ATTRS) gear.a[k] = (gear.a[k] || 0) + (it.a[k] || 0);
   }
-  const wt = WEAPON_TYPES[p.eq.weapon ? p.eq.weapon.b : 'none'] || WEAPON_TYPES.none;
-  const atkUp = hasFx(p, 'atkUp'), defUp = hasFx(p, 'defUp'), haste = hasFx(p, 'haste'), slow = hasFx(p, 'slow'), dodgeFx = hasFx(p, 'dodge');
-  const hasteMul = 1 + A.dex * 0.003 + (haste ? haste.pow : 0);
-  const mh = Math.round((80 + p.lvl * 12 + A.vit * 9 + ghp) * J.hpMul);
-  const def = (p.lvl + A.vit * 0.5 + gdef) * J.defMul * (1 + (defUp ? defUp.pow : 0));
-  p.st = {
-    A, wAtk: gatk, wt, mh, def, mres: A.spr * 0.9 + def * 0.3,
-    dmgMul: (1 + (atkUp ? atkUp.pow : 0)) * (p.dbgMul || 1),
-    crit: 5 + A.dex * 0.25 + gcrit + (J.critAdd || 0),
-    critDmg: 1.8 + (J.critDmg || 0),
-    dodge: Math.min(95, A.dex * 0.15 + gdodge + (J.dodgeAdd || 0) + (dodgeFx ? dodgeFx.pow * 100 : 0)),
-    haste: hasteMul, range: wt.range, atkMs: wt.ms / hasteMul,
-    moveMul: Math.max(0.4, 1 + (haste ? haste.pow : 0) + (J.moveHaste || 0) - (slow ? slow.pow : 0)),
-    healPow: (A.spr * 1.2 + A.int * 0.3 + p.lvl) * (J.healMul || 1),
-    magMul: J.magMul || 1, lifesteal: J.lifesteal || 0, threat: p.job === 'warrior' ? 1.6 : p.job === 'paladin' ? 1.4 : p.job === 'rogue' ? 0.85 : 1,
-  };
+  const fxPow = (id) => { const f = hasFx(p, id); return f ? f.pow : 0; };
+  p.st = deriveStats({ // all the maths lives in shared/combat.js so the balance simulator uses the very same formulas
+    job: p.job, lvl: p.lvl, jobLvl: p.jobs[p.job].lvl, attr: p.attr, gear, weaponBase: p.eq.weapon ? p.eq.weapon.b : null,
+    fx: { atkUp: fxPow('atkUp'), defUp: fxPow('defUp'), haste: fxPow('haste'), slow: fxPow('slow'), dodge: fxPow('dodge') }, dbgMul: p.dbgMul || 1,
+  });
   if (p.god) { p.st.def += 1e6; p.st.mres += 1e6; p.st.mh += 1e5; }
   if (p.hp > p.st.mh) p.hp = p.st.mh;
 }
-const power = (p, scale) => (4 + p.st.A[scale] * 0.6 + p.st.wAtk * 0.8 + p.lvl * 0.8) * p.st.dmgMul;
+const power = (p, scale) => combatPower(p.st, p.lvl, scale);
 
 const meMsg = (p) => ({
   t: 'me', id: p.id, name: p.name, look: p.look, job: p.job, jobs: p.jobs, attr: p.attr, points: p.points, bar: p.bar, slots: barSlots(p.lvl),
@@ -622,7 +609,7 @@ function hurtPlayer(p, raw, from, o = {}) {
   if (hasFx(p, 'invuln')) return emit(p.z, p.x, p.y, { e: 'dmg', x: p.x, y: p.y, v: 0, k: 'x', id: p.id });
   if (!o.noDodge && Math.random() * 100 < p.st.dodge) return emit(p.z, p.x, p.y, { e: 'dmg', x: p.x, y: p.y, v: 0, k: 'x', id: p.id });
   const res = o.mag ? p.st.mres : p.st.def;
-  let amt = Math.max(1, Math.round(raw * (1 - res / (res + 40 + p.lvl * 2))));
+  let amt = Math.max(1, Math.round(raw * mitigation(res, p.lvl)));
   const sh = hasFx(p, 'shield');
   if (sh) {
     const ab = Math.min(sh.pow, amt);
@@ -953,7 +940,7 @@ function useSkill(p, n, now) {
   const id = p.bar[n - 1], sk = id && SKILLS[id];
   if (!sk || now < (p.gcdAt || 0) || (p.cd[id] || 0) > now) return;
   if (!castSkill(p, sk)) return;
-  p.cd[id] = now + sk.cd; p.gcdAt = now + 600; p.lastHit = now; p.dirty = true;
+  p.cd[id] = now + sk.cd; p.gcdAt = now + GCD_MS; p.lastHit = now; p.dirty = true;
   send(p, { t: 'ev', e: 'cd', id, ms: sk.cd });
 }
 
