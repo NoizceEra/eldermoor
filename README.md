@@ -82,3 +82,5 @@ One Node service serves the client and the WebSocket (`/ws`), so a single host i
 prints a public `https://*.trycloudflare.com` URL.
 
 Never set `EM_DEBUG=1` on a public server.
+
+- **Heroes**: 32x32 procedural sprites with class silhouettes, walk/idle/blink/attack/cast animation, gear drawn on the body, and level auras.

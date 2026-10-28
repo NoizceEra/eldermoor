@@ -4,6 +4,7 @@ import { SEED, MOBS, QUESTS, RARITY, NPCS } from '/shared/data.js';
 import { JOBS, JOB_ORDER, SKILLS, ATTRS, ATTR_INFO, EFFECTS, skillsOfJob } from '/shared/jobs.js';
 import { EQ_KEYS, EQ_LABEL, LOOK_LIMITS, LOOK_LABELS, LOOK_COST, SKIN_TONES, HAIR_STYLES, HAIR_COLORS, EYE_COLORS, STARTER_KIT, defaultLook, visTokens } from '/shared/gear.js';
 import * as SP from '/client/sprites.js';
+import * as HERO from '/client/hero32.js';
 import { TS, CHUNK, buildWorldArt, drawWaterTile, drawLavaTile, treeSprite } from '/client/gfx.js';
 
 const $ = (id) => document.getElementById(id);
@@ -220,7 +221,7 @@ function onEvent(m) {
       if (src && ['swing', 'bolt', 'arrow', 'fire', 'bash', 'cleave', 'holy', 'shadow', 'lightning'].includes(m.k)) {
         src.atkAt = t;
         if (m.tx !== undefined) src.atkDx = Math.sign(m.tx - m.x), src.atkDy = Math.sign(m.ty - m.y);
-      }
+      } else if (src && src.k === 'p' && ['cry', 'heal', 'nova', 'ring', 'burst', 'meteor', 'rain'].includes(m.k)) src.castAt = t; // support / area casts raise both arms
       fxs.push({ ...m, t0: t });
       if (m.k === 'levelup' && m.id === myId) { sfx.level(); banner('LEVEL UP!'); }
       if (m.k === 'die') {
@@ -773,7 +774,7 @@ function renderChar() {
 let lookDraft = null;
 function lookTab(body) {
   if (!lookDraft) lookDraft = [...me.look];
-  const cv = document.createElement('canvas'); cv.width = 16; cv.height = 16; cv.className = 'bigprev';
+  const cv = document.createElement('canvas'); cv.width = 32; cv.height = 32; cv.className = 'bigprev';
   drawPrev(cv, lookDraft, visTokens(me.eq), 0, 0, me.job);
   const rows = mkEl('div', 'lookrows');
   lookRows(rows, lookDraft, () => renderChar());
@@ -812,7 +813,7 @@ function jobsTab(body) {
     const learned = skillsOfJob(id).filter((s) => SKILLS[s].lvl <= lv).length;
     const card = mkEl('div', `jcard${active ? ' act' : ''}`);
     card.style.setProperty('--c', J.color);
-    const cv = document.createElement('canvas'); cv.width = 16; cv.height = 16; cv.getContext('2d').drawImage(SP.playerSprite(id, 0, 0, 0), 0, 0);
+    const cv = document.createElement('canvas'); cv.width = 32; cv.height = 32; cv.getContext('2d').drawImage(HERO.classSprite(id, 0, 0), 0, 0);
     const info = mkEl('div', 'grow', `<b style="color:${J.color}">${J.name}</b> <span class="small">${J.role}</span><br>${lv ? `Job level ${lv}/20` : 'Not played yet'} &middot; skills ${learned}/6${active && me.jxpn ? ` &middot; ${Math.round((me.jobs[id].xp / me.jxpn) * 100)}% to next` : ''}<div class="tr">${esc(J.trait)}</div>`);
     const b = mkEl('button', '', active ? 'Active' : wait > 0 ? `Wait ${Math.ceil(wait / 1000)}s` : 'Switch');
     b.disabled = active || wait > 0; b.onclick = () => tx({ t: 'job', id });
@@ -1028,8 +1029,11 @@ function drawEntity(o, t, tgId) {
       wx.fillStyle = '#6a6a78'; wx.fillRect(px + 7, py + 7, 2, 5); wx.fillRect(px + 6, py + 8, 4, 1);
       return;
     }
-    const fr = o.moving ? [1, 0, 3, 0][Math.floor(t / 110) % 4] : 0;
-    spr = SP.heroSprite(o.lk, o.vs, o.f, fr, o.c);
+    let fr = o.moving ? [1, 2, 3, 2][Math.floor(t / 115) % 4] : Math.floor(t / 600 + o.i) % 2 ? 4 : 0; // stride / passing / stride, or idle breath
+    if (!o.moving && (t / 1000 + o.i * 0.37) % 4 < 0.14) fr = 5; // blink
+    const since = t - o.atkAt;
+    const act = since < 130 ? 2 : since < 280 ? 3 : o.castAt && t - o.castAt < 450 ? 4 : 0;
+    spr = HERO.heroSprite(o.lk, o.vs, o.f, fr, o.c, act);
   } else {
     const fr = FLYERS.has(o.s) ? Math.floor(t / 110) % 2 : SLIMES.has(o.s) ? Math.floor(t / 320) % 2 : o.moving ? Math.floor(t / 160) % 2 : BIG.has(o.s) ? Math.floor(t / 600) % 2 : 0;
     spr = SP.mobSprite(o.s, o.f, HUMANOID.has(o.s) ? (o.moving ? [1, 0, 3, 0][Math.floor(t / 130) % 4] : 0) : fr);
@@ -1040,7 +1044,7 @@ function drawEntity(o, t, tgId) {
   const baseX = o.rx * TS + 8 - w / 2 + lx0, baseY = o.ry * TS + 16 - spr.height + ly0 + oy;
   const px = Math.round(baseX - camX), py = Math.round(baseY - camY);
   if (px < -40 || py < -40 || px > VW + 40 || py > VH + 40) return;
-  shadow(px + w / 2, py + spr.height - (FLYERS.has(o.s) ? 0 : 3) - oy * (FLYERS.has(o.s) ? -1 : 0) + (FLYERS.has(o.s) ? 0 : 0), BIG.has(o.s) ? 22 : FLYERS.has(o.s) ? 6 : 10);
+  shadow(px + w / 2, py + spr.height - (FLYERS.has(o.s) ? 0 : 3) - oy * (FLYERS.has(o.s) ? -1 : 0) + (FLYERS.has(o.s) ? 0 : 0), BIG.has(o.s) ? 22 : FLYERS.has(o.s) ? 6 : o.k === 'p' ? 14 : 10);
   if (o.id === undefined && o.i === tgId) {
     const pulse = Math.floor(t / 250) % 2;
     wx.fillStyle = '#ff4a4a';
@@ -1051,24 +1055,21 @@ function drawEntity(o, t, tgId) {
   }
   if (o.k === 'p') heroAura(px + w / 2, py + spr.height - 2, o.c, o.l, t, o.i);
   wx.globalAlpha = fadeA;
-  if (o.k === 'p' && !o.moving && Math.floor(t / 520 + o.i) % 2) { // idle breathing: the torso settles one pixel onto the legs
-    wx.drawImage(spr, 0, 11, w, spr.height - 11, px, py + 11, w, spr.height - 11);
-    wx.drawImage(spr, 0, 0, w, 11, px, py + 1, w, 11);
-  } else wx.drawImage(spr, px, py);
+  wx.drawImage(spr, px, py);
   if (flash) { wx.globalAlpha = 0.65 * fadeA; wx.drawImage(flashOf(spr), px, py); }
   wx.globalAlpha = 1;
   if (o.k === 'm' && o.st) { wx.fillStyle = '#ffe066'; const sx = px + w / 2 - 4; for (let i = 0; i < 3; i++) wx.fillRect(sx + i * 3 + ((Math.floor(t / 100) + i) % 2), py - 3, 1, 1); }
   if (o.dying) return;
-  // overhead bars + labels
-  const cx = px + w / 2;
+  // overhead bars + labels (a hero's head sits a few rows below the top of its 32px frame)
+  const cx = px + w / 2, pyT = o.k === 'p' ? py + 3 : py;
   const barW = BIG.has(o.s) ? 26 : 12;
   if (o.k === 'm' && (o.h < o.mh || o.i === tgId)) drawHealthBar(Math.round(cx - barW / 2), py - 2 - (BIG.has(o.s) ? 0 : 0), barW, o.h / o.mh);
-  if (o.k === 'p' && o.i !== myId) drawHealthBar(Math.round(cx - 6), py - 1, 12, o.h / o.mh, '#4ac86a');
-  if (o.fx && o.fx.length) o.fx.slice(0, 6).forEach((id, i) => { wx.fillStyle = EFFECTS[id] ? EFFECTS[id].col : '#fff'; wx.fillRect(Math.round(cx - o.fx.length * 2) + i * 4, py - 7, 3, 3); });
+  if (o.k === 'p' && o.i !== myId) drawHealthBar(Math.round(cx - 6), pyT - 1, 12, o.h / o.mh, '#4ac86a');
+  if (o.fx && o.fx.length) o.fx.slice(0, 6).forEach((id, i) => { wx.fillStyle = EFFECTS[id] ? EFFECTS[id].col : '#fff'; wx.fillRect(Math.round(cx - o.fx.length * 2) + i * 4, pyT - 7, 3, 3); });
   const name = o.k === 'p' ? o.n : mobDef(o).name;
   const col = o.k === 'p' ? (o.i === myId ? '#8be88b' : inParty(o.i) ? '#6ab8ff' : '#ffffff') : levelColor(o.l);
-  if (o.k !== 'm' || settings.names || o.i === tgId || mobDef(o).boss) labels.push({ x: cx, y: py - (o.k === 'm' && (o.h < o.mh || o.i === tgId) ? 5 : 2), txt: o.k === 'p' ? name : `${name}  ${o.l}`, col, boss: !!mobDef(o).boss });
-  if (o.say && t - o.sayAt < 5000) labels.push({ x: cx, y: py - 14, txt: o.say, col: '#ffffff', bubble: true });
+  if (o.k !== 'm' || settings.names || o.i === tgId || mobDef(o).boss) labels.push({ x: cx, y: pyT - (o.k === 'm' && (o.h < o.mh || o.i === tgId) ? 5 : 2), txt: o.k === 'p' ? name : `${name}  ${o.l}`, col, boss: !!mobDef(o).boss });
+  if (o.say && t - o.sayAt < 5000) labels.push({ x: cx, y: pyT - 14, txt: o.say, col: '#ffffff', bubble: true });
 }
 
 function drawFx(t) {
@@ -1471,8 +1472,8 @@ function previewVis(job) {
 }
 function drawPrev(cv, look, vs, dir = 0, fr = 0, job = '') {
   const x = cv.getContext('2d');
-  x.clearRect(0, 0, 16, 16);
-  x.drawImage(SP.heroSprite(look, vs, dir, fr, job), 0, 0);
+  x.clearRect(0, 0, 32, 32);
+  x.drawImage(HERO.heroSprite(look, vs, dir, fr, job), 0, 0);
 }
 const LOOK_PAL = [SKIN_TONES, null, HAIR_COLORS, EYE_COLORS];
 function lookRows(box, look, onChange) {
@@ -1507,7 +1508,7 @@ function selectClass(c) {
 }
 for (const c of JOB_ORDER) {
   const el = document.createElement('div'); el.className = 'card'; el.dataset.c = c;
-  const cv = document.createElement('canvas'); cv.width = 16; cv.height = 16; cv.getContext('2d').drawImage(SP.playerSprite(c, 0, 0, 0), 0, 0);
+  const cv = document.createElement('canvas'); cv.width = 32; cv.height = 32; cv.getContext('2d').drawImage(HERO.classSprite(c, 0, 0), 0, 0);
   el.append(cv, document.createTextNode(JOBS[c].name));
   el.onclick = () => selectClass(c);
   cardsEl.appendChild(el);

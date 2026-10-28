@@ -104,9 +104,9 @@ export class Grid {
 }
 
 export const RARITY_COL = ['#c8c8c8', '#5fd35f', '#4aa3ff', '#c06bff'];
-const BLADE = ['#cfd4dc', '#8be88b', '#7cc2ff', '#dc9bff'];
-const SKINS = ['#f0c090', '#e0a878', '#b9814f', '#8a5a3a'];
-const WOOD = '#7a5230';
+export const BLADE = ['#cfd4dc', '#8be88b', '#7cc2ff', '#dc9bff'];
+export const SKINS = ['#f0c090', '#e0a878', '#b9814f', '#8a5a3a'];
+export const WOOD = '#7a5230';
 
 // ------------------------------------------------------------------ weapons
 function weapon(g, kind, x, blade, mirror = false) {
@@ -189,7 +189,7 @@ function bodyDetail(g, o, side) {
 
 // ------------------------------------------------------------------ class identity: every job keeps a signature silhouette
 // whatever it wears, so a Paladin in a leather vest is still readably a Paladin.
-const JOB_EYE = { warlock: '#ff6aff', necromancer: '#7affc8' };
+export const JOB_EYE = { warlock: '#ff6aff', necromancer: '#7affc8' };
 const RED = '#c03a3a', BONE = '#e6e2cc', GOLD = '#e8c04a';
 function accent(g, o, dir) {
   const J = JOBS[o.job];
@@ -368,7 +368,7 @@ function humanoid(o, dir, fr) {
   return g.canvas(dir === 2);
 }
 
-const PRESET = {
+export const PRESET = {
   warrior: { hair: '#5a3a22', tunic: '#b03a3a', pants: '#4a4a5a', boots: '#5a3a22', belt: '#3a2a1a', hat: 'helm', weapon: 'sword', shield: true },
   mage: { hair: '#e8e0c8', tunic: '#6a3fb0', pants: '#3a2a5a', boots: '#3a2a1a', belt: '#e8c04a', hat: 'wizard', hatCol: '#5a2f9a', weapon: 'staff', robe: true },
   ranger: { hair: '#7a4a22', tunic: '#3f7a3f', pants: '#6a4a2a', boots: '#3a2a1a', belt: '#2a1a0a', hat: 'hood', hatCol: '#2f5f33', weapon: 'bow' },
@@ -404,7 +404,7 @@ const memo = (k, f) => { let v = cache.get(k); if (!v) { v = f(); cache.set(k, v
 // ------------------------------------------------------------------ player characters: appearance + worn gear
 const HERO_BODY = { robe: { robe: true }, tunic: {}, vest: { bk: 'leather' }, mail: { bk: 'mail' }, plate: { bk: 'plate' } };
 const HERO_HAT = { cap: 'cap', hood: 'hood', helm: 'helm', crown: 'crown', horns: 'horns', circlet: 'circlet', wizhat: 'wizard' };
-function heroOptions(lk, vs, job = '') {
+export function heroOptions(lk, vs, job = '') {
   const tok = (i) => { const [b, cl, r] = (vs[i] || '').split('~'); return b ? { b, cl: cl || defaultColor(b), r: Number(r) || 0 } : null; };
   const head = tok(0), body = tok(1), legs = tok(2), boots = tok(3), gloves = tok(4), cape = tok(5), off = tok(6), wep = tok(7);
   const o = {
