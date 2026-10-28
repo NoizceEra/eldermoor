@@ -1378,6 +1378,7 @@ function onMessage(ws, raw) {
   switch (m.t) {
     case 'move': {
       if (p.dead) return;
+      if (p.emote) { p.emote = null; p.dirty = true; }
       const dx = Math.sign(m.dx | 0), dy = Math.sign(m.dy | 0);
       if ((dx && dy) || (!dx && !dy)) return;
       p.want = { dx, dy, at: now };
@@ -1389,7 +1390,12 @@ function onMessage(ws, raw) {
       p.dirty = true;
       break;
     }
-    case 'skill': if (!p.dead) useSkill(p, m.n | 0, now); break;
+    case 'skill': if (!p.dead) { p.emote = null; useSkill(p, m.n | 0, now); } break;
+    case 'emote': {
+      if (p.dead || !Object.hasOwn(EMOTES, m.e) || now - (p.emoteAt || 0) < 1000) return;
+      p.emoteAt = now; p.emote = { k: m.e, until: EMOTES[m.e] ? now + EMOTES[m.e] : 0 }; p.dirty = true;
+      break;
+    }
     case 'attr': {
       const n = Math.max(1, Math.min(10, m.n | 0 || 1));
       if (!ATTRS.includes(m.k) || p.points < n) return;
@@ -1529,7 +1535,9 @@ function onMessage(ws, raw) {
 // ---------------------------------------------------------------- main loop
 let tickN = 0, tickMs = 0, awakeMobs = 0;
 const VX = 32, VY = 20;
-const playerEnt = (o) => ({ i: o.id, k: 'p', x: o.x, y: o.y, f: o.f, h: o.hp, mh: o.st.mh, n: o.name, l: o.lvl, c: o.job, lk: o.look, vs: visTokens(o.eq), fx: fxIds(o), d: o.dead ? 1 : 0, sp: o.st.moveMul > 1.2 ? 1 : 0 });
+const EMOTES = { wave: 3000, dance: 6000, cheer: 2500, sit: 0 }; // ms shown; sit lasts until you move
+const emoteOf = (p) => (p.emote && (p.emote.until === 0 || p.emote.until > Date.now()) ? p.emote.k : 0);
+const playerEnt = (o) => ({ em: emoteOf(o), i: o.id, k: 'p', x: o.x, y: o.y, f: o.f, h: o.hp, mh: o.st.mh, n: o.name, l: o.lvl, c: o.job, lk: o.look, vs: visTokens(o.eq), fx: fxIds(o), d: o.dead ? 1 : 0, sp: o.st.moveMul > 1.2 ? 1 : 0 });
 const mobEnt = (m, now) => ({ i: m.id, k: 'm', s: m.type, x: m.x, y: m.y, f: m.f, h: m.hp, mh: m.mh, l: m.lvl, st: m.stunUntil > now ? 1 : 0, fx: fxIds(m) });
 const dropEnt = (d) => ({ i: d.id, k: 'd', x: d.x, y: d.y, g: d.gold ? 1 : 0, b: d.item ? d.item.b : '', r: d.item ? d.item.r : 0, cl: d.item ? d.item.cl || '' : '', n: d.item ? d.item.n : `${d.gold} gold` });
 

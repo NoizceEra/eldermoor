@@ -81,6 +81,28 @@ const sfx = {
   click: () => beep(500, 0.03, 'square', 0.03),
 };
 
+// ---- ambient music: slow generated phrases; the scale and register follow where you are
+const SCALES = { town: [0, 2, 4, 7, 9], field: [0, 2, 3, 5, 7, 9, 10], dark: [0, 1, 3, 5, 7, 8, 10], ice: [0, 2, 4, 6, 7, 9, 11], fire: [0, 1, 4, 5, 7, 8, 11] };
+const ROOTS = { town: 262, field: 196, dark: 110, ice: 294, fire: 147 };
+const music = { next: 0, n: 0 };
+function note(freq, dur, vol, type = 'sine', attack = 0.25) {
+  const t = actx.currentTime, o = actx.createOscillator(), g = actx.createGain();
+  o.type = type; o.frequency.value = freq;
+  const lv = Math.max(0.0002, vol * (settings.vol / 0.7));
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(lv, t + attack); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g).connect(actx.destination); o.start(t); o.stop(t + dur + 0.05);
+}
+function musicTick() {
+  if (!actx || muted || !settings.music || !me || document.hidden || actx.currentTime < music.next) return;
+  const mood = zoneKind === 'dungeon' ? (SCALES[zoneTheme] ? zoneTheme : 'dark') : inTown(me.x, me.y) ? 'town' : 'field';
+  const sc = SCALES[mood], root = ROOTS[mood], i = Math.floor(Math.random() * sc.length), oct = Math.random() < 0.3 ? 2 : 1;
+  note(root * Math.pow(2, sc[i] / 12) * oct, mood === 'dark' ? 3.2 : 2.2, mood === 'town' ? 0.022 : 0.018, mood === 'ice' ? 'triangle' : 'sine');
+  if (Math.random() < 0.35) note(root * Math.pow(2, sc[(i + 2) % sc.length] / 12) * oct, 2.4, 0.012, 'sine', 0.4); // a third above
+  if (music.n++ % 4 === 0) note(root / 2, 5, 0.02, 'sine', 0.8); // a slow drone underneath
+  music.next = actx.currentTime + (mood === 'dark' ? 1.8 : 0.9) + Math.random() * 1.6;
+}
+setInterval(musicTick, 300);
+
 // ------------------------------------------------------------------ icons
 const urlCache = new Map();
 const iconURL = (b, r, cl = '') => { const k = `${b}${r}${cl}`; if (!urlCache.has(k)) urlCache.set(k, SP.itemIcon(b, r, cl).toDataURL()); return urlCache.get(k); };
@@ -438,7 +460,8 @@ function sendChat(v) {
     const t = party.members.find((m) => m.name.toLowerCase() === arg('/kick').toLowerCase());
     if (t) tx({ t: 'pkick', id: t.id }); else addLine('<span style="color:#ff8a8a">Nobody in your party has that name.</span>');
   } else if (v.startsWith('/p ')) tx({ t: 'chat', m: arg('/p'), ch: 'party' });
-  else if (v === '/help') addLine('<span style="color:#9fd0ff">/invite NAME, /leave, /kick NAME, /p TEXT (party chat), /trade NAME, /who</span>');
+  else if (['/wave', '/dance', '/sit', '/cheer'].includes(v)) tx({ t: 'emote', e: v.slice(1) });
+  else if (v === '/help') addLine('<span style="color:#9fd0ff">/invite NAME, /leave, /kick NAME, /p TEXT (party chat), /trade NAME, /who, /wave /dance /sit /cheer</span>');
   else tx({ t: 'chat', m: v });
 }
 function answerInvite(ok) {
@@ -548,7 +571,7 @@ function renderParty() {
 
 
 // ---- settings, help menu and quest log
-let settings = { vol: 0.7, dmg: true, names: true, shake: true };
+let settings = { vol: 0.7, dmg: true, names: true, shake: true, music: true };
 try { settings = { ...settings, ...JSON.parse(localStorage.getItem('em_settings') || '{}') }; } catch { /* private mode */ }
 const saveSettings = () => { try { localStorage.setItem('em_settings', JSON.stringify(settings)); localStorage.setItem('em_mute', muted ? '1' : '0'); } catch { /* ignore */ } };
 const isOpen = (id) => !$(id).classList.contains('hidden');
@@ -573,12 +596,16 @@ function renderMenu() {
   sc.onchange = () => { muted = !sc.checked; saveSettings(); }; snd.appendChild(sc); box.appendChild(snd);
   const vol = mkEl('div', 'setrow', '<span>Volume</span>'); const vr = document.createElement('input'); vr.type = 'range'; vr.min = 0; vr.max = 100; vr.value = Math.round(settings.vol * 100);
   vr.oninput = () => { settings.vol = vr.value / 100; saveSettings(); }; vr.onchange = () => sfx.click(); vol.appendChild(vr); box.appendChild(vol);
+  toggle('Ambient music', 'music');
   toggle('Floating damage numbers', 'dmg');
   toggle('Monster names (always shown for your target)', 'names');
   toggle('Screen shake when hit', 'shake');
   const btns = mkEl('div', 'btnrow'); const ql = mkEl('button', '', 'Quest log (L)'); ql.onclick = () => toggleQlog();
   const mp = mkEl('button', '', 'World map (N)'); mp.onclick = () => { box.classList.add('hidden'); toggleMap(); };
   const rl = mkEl('button', '', 'Log out'); rl.onclick = () => location.reload(); btns.append(ql, mp, rl); box.appendChild(btns);
+  const emo = mkEl('div', 'btnrow');
+  for (const e of ['wave', 'dance', 'sit', 'cheer']) { const b = mkEl('button', '', e[0].toUpperCase() + e.slice(1)); b.onclick = () => { tx({ t: 'emote', e }); box.classList.add('hidden'); }; emo.appendChild(b); }
+  box.appendChild(mkEl('h4', '', 'Emotes (or /wave /dance /sit /cheer)')); box.appendChild(emo);
   box.appendChild(mkEl('h4', '', 'Controls'));
   const keys = [
     ['WASD / arrows', 'walk'], ['Click ground', 'walk there'], ['Click monster', 'target + attack'], ['Click NPC', 'talk'],
@@ -960,8 +987,8 @@ function openDialog(m) {
   const n = npcs.find((x) => x.id === m.npc);
   const box = $('dialog'); box.innerHTML = ''; box.classList.remove('hidden');
   const top = document.createElement('div'); top.className = 'top';
-  const pc = document.createElement('canvas'); pc.width = 16; pc.height = 16;
-  pc.getContext('2d').drawImage(SP.npcSprite(n.key, 0, 0), 0, 0);
+  const pc = document.createElement('canvas'); pc.width = 32; pc.height = 32;
+  pc.getContext('2d').drawImage(HERO.npcSprite(n.key, 0, 0), 0, 0);
   const txt = document.createElement('div'); txt.className = 'txt';
   txt.innerHTML = `<div class="title">${esc(m.name)}${m.title ? ` - ${esc(m.title)}` : ''}</div>${esc(m.text)}${m.reward ? `<div class="rew">Reward: ${esc(m.reward)}</div>` : ''}`;
   top.append(pc, txt); box.appendChild(top);
@@ -1064,7 +1091,9 @@ function drawEntity(o, t, tgId) {
     if (!o.moving && (t / 1000 + o.i * 0.37) % 4 < 0.14) fr = 5; // blink
     const since = t - o.atkAt;
     const act = since < 130 ? 2 : since < 280 ? 3 : o.castAt && t - o.castAt < 450 ? 4 : 0;
-    spr = HERO.heroSprite(o.lk, o.vs, o.f, fr, o.c, act);
+    let sf = fr, a = act;
+    if (o.em && !o.moving && act === 0) { a = { wave: 5, dance: 6, sit: 7, cheer: 8 }[o.em] || 0; sf = Math.floor(t / (o.em === 'dance' ? 260 : 380)) % 2; if (a === 8) oy = -Math.round(Math.abs(Math.sin(t / 190)) * 3); }
+    spr = HERO.heroSprite(o.lk, o.vs, o.f, sf, o.c, a);
   } else {
     const fr = FLYERS.has(o.s) ? Math.floor(t / 110) % 2 : SLIMES.has(o.s) ? Math.floor(t / 320) % 2 : o.moving ? Math.floor(t / 160) % 2 : BIG.has(o.s) ? Math.floor(t / 600) % 2 : 0;
     spr = SP.mobSprite(o.s, o.f, HUMANOID.has(o.s) ? (o.moving ? [1, 0, 3, 0][Math.floor(t / 130) % 4] : 0) : fr);
@@ -1284,14 +1313,16 @@ function drawPortal(n, t) {
 
 function drawNpc(n, t) {
   if (n.role === 'portal') return drawPortal(n, t);
-  const spr = SP.npcSprite(n.key, n.key === 'guard' ? 0 : (Math.floor(t / 2500 + n.id) % 6 === 0 ? 3 : 0), 0);
-  const px = n.x * TS - camX, py = n.y * TS - camY;
-  shadow(px + 8, py + 13, 10);
-  wx.drawImage(spr, px, py);
-  labels.push({ x: px + 8, y: py - 2, txt: n.name, col: '#ffe066' });
+  const dir = n.key === 'guard' ? 0 : (Math.floor(t / 2500 + n.id) % 6 === 0 ? 3 : 0);
+  const fr = (t / 1000 + n.id * 0.7) % 4 < 0.14 ? 5 : Math.floor(t / 700 + n.id) % 2 ? 4 : 0; // blink, breathe
+  const spr = HERO.npcSprite(n.key, dir, fr);
+  const px = n.x * TS - camX, py = n.y * TS - camY; // the tile's top-left; the 32px sprite stands on its bottom edge
+  shadow(px + 8, py + 13, 12);
+  wx.drawImage(spr, px - 8, py - 16);
+  labels.push({ x: px + 8, y: py - 14, txt: n.name, col: '#ffe066' });
   if (n.role === 'quest' && me) {
     const q = me.quest; const mark = q.i >= QUESTS.length || QUESTS[q.i].giver !== n.id ? '' : q.s === 0 ? '!' : q.s === 2 ? '?' : '';
-    if (mark) labels.push({ x: px + 8, y: py - 12 - Math.round(Math.sin(t / 200) * 2), txt: mark, col: mark === '!' ? '#ffe066' : '#6aff8a', mark: true });
+    if (mark) labels.push({ x: px + 8, y: py - 24 - Math.round(Math.sin(t / 200) * 2), txt: mark, col: mark === '!' ? '#ffe066' : '#6aff8a', mark: true });
   }
 }
 

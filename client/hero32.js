@@ -195,6 +195,7 @@ function face(g, o, dir, y, blink) {
   for (const x of ex) eyeAt(g, x, y(10), es, eye, blink);
   if (o.job !== 'rogue') g.rect(side ? 20 : 15, y(15), 2, 1, dk);
   if (!side) g.set(15, y(13), adj(o.skin, 0.9));
+  if (o.beard) { const bc = o.beard; if (side) { g.rect(17, y(13), 6, 4, bc); g.rect(18, y(17), 4, 2, bc); } else { g.rect(11, y(13), 10, 4, bc); g.rect(13, y(17), 6, 2, bc); g.rect(14, y(12), 4, 1, bc); } }
   const pink = '#f09aa0';
   if (fm === 'blush') { if (side) g.rect(19, y(14), 3, 1, pink); else { g.rect(10, y(14), 3, 1, pink); g.rect(19, y(14), 3, 1, pink); } }
   else if (fm === 'freckles') { const fr = adj(o.skin, 0.68); for (const [x, yy] of side ? [[18, 14], [20, 14], [19, 13]] : [[11, 14], [13, 14], [12, 13], [18, 14], [20, 14], [19, 13]]) g.set(x, y(yy), fr); }
@@ -304,8 +305,10 @@ export function buildOptions(lk, vs, job = '') {
 function render(o, dir, fr, act) {
   const g = new Grid(32, 32);
   const front = dir === 0, back = dir === 1, side = dir >= 2;
-  const stride = fr === 1 ? -1 : fr === 3 ? 1 : 0;
-  const by = fr === 1 || fr === 3 || fr === 4 ? 1 : 0; // head and torso settle on stride and breath frames
+  // act 5 wave, 6 dance, 7 sit, 8 cheer: fr is then just a two-phase beat
+  const emo = act >= 5, ph = emo ? fr & 1 : 0;
+  const stride = emo ? (act === 6 || act === 8 ? (ph ? -1 : 1) : 0) : fr === 1 ? -1 : fr === 3 ? 1 : 0;
+  const by = emo ? (act === 7 ? 3 : (act === 6 || act === 8) && ph ? 1 : 0) : fr === 1 || fr === 3 || fr === 4 ? 1 : 0; // head and torso settle on stride and breath frames
   const y = (v) => v + by;
   const skin = o.skin, pants = o.pants, tunic = o.tunic;
   const B = o.body ? o.body.b : 'none', L = o.legs ? o.legs.b : 'pants', BT = o.boots ? o.boots.b : 'boots', GL = o.gloves ? o.gloves.b : 'none', CP = o.cape ? o.cape.b : 'none';
@@ -338,6 +341,13 @@ function render(o, dir, fr, act) {
     handR = [18 + stride * 2, y(23)]; handL = [15 - stride * 2, y(23)]; wv = bow ? [1, 0] : [0.55, -1];
     if (act === 2) { handR = [22, y(20)]; wv = bow ? [1, 0] : [1, 0.12]; } else if (act === 3) { handR = [20, y(22)]; wv = bow ? [1, 0] : [0.8, 0.6]; }
     if (cast) { handR = [21, y(16)]; handL = [16, y(16)]; wv = bow ? [1, 0] : [0.2, -1]; }
+  }
+
+  if (emo && act !== 7) {
+    wv = bow ? [back ? -1 : 1, 0] : [back ? -0.2 : 0.2, -1];
+    if (act === 5) { if (front) handR = [23 + (ph ? 1 : -1), y(13)]; else if (back) handL = [9 + (ph ? -1 : 1), y(13)]; else handR = [21 + (ph ? 1 : -1), y(14)]; }
+    else if (act === 6) { if (side) { handR = [21, y(15) - (ph ? 3 : 0)]; handL = [15, y(15) - (ph ? 0 : 3)]; } else { handL = [8, y(15) - (ph ? 3 : 0)]; handR = [23, y(15) - (ph ? 0 : 3)]; } }
+    else if (side) { handR = [21, y(13)]; handL = [16, y(13)]; } else { handL = [8, y(12)]; handR = [23, y(12)]; }
   }
 
   // ---- layers behind the body
@@ -399,6 +409,8 @@ function render(o, dir, fr, act) {
     } else if (B === 'tunic') { g.rect(13, y(17), side ? 5 : 6, 1, lt); }
     if (hemT && B !== 'robe') { if (!side) g.rect(11, y(17), 10, 1, hemT); else g.rect(13, y(17), 7, 1, hemT); }
   }
+
+  if (o.apron && !back) { const ax = side ? 14 : 12, aw = side ? 5 : 8; g.rect(ax, y(18), aw, 6, '#e8e0cc'); g.rect(ax, y(18), aw, 1, '#cfc8b0'); g.rect(ax, y(23), aw, 1, '#cfc8b0'); }
 
   // ---- arms
   if (!side) { arm(10, y(18), handL[0], handL[1]); arm(22, y(18), handR[0], handR[1]); } else arm(16, y(18), handR[0], handR[1]);
@@ -513,4 +525,26 @@ export function starterTokens(cls) {
 /** a class in its starter outfit, for the picker */
 export function classSprite(cls, dir = 0, fr = 0, act = 0) {
   return heroSprite(CLASS_LOOK[cls] || [1, 0, 1, 0, 0, 0], starterTokens(cls), dir, fr, cls, act);
+}
+
+// ---------------------------------------------------------------- townsfolk in the same chibi style
+const T = (b, cl, r = 0) => ({ b, cl, r });
+const NPC32 = {
+  elder: { skin: '#f6d2b0', hs: 'long', hair: '#f2f2f2', beard: '#f2f2f2', body: T('robe', '#3a6ab0'), legs: T('pants', '#2a4a80'), boots: T('shoes', '#3a2a1a'), wep: T('staff', '') },
+  shop: { skin: '#f0c090', hs: 'short', hair: '#6a3a1a', head: T('cap', '#a03030'), body: T('vest', '#c0a060'), legs: T('pants', '#5a4a2a'), boots: T('boots', '#3a2a1a'), apron: true },
+  guard: { skin: '#e0a878', hs: 'short', hair: '#3a2a1a', head: T('helm', '#8a94a8'), body: T('mail', '#3a5a9a'), legs: T('greaves', '#4a4a5a'), boots: T('boots', '#2a2a2a'), wep: T('spear', ''), off: T('shield', '#3a5a9a') },
+  scout: { skin: '#b9814f', hs: 'ponytail', hair: '#2a1a12', head: T('hood', '#d8c090'), body: T('vest', '#d8c090'), legs: T('leggings', '#8a6a3a'), boots: T('boots', '#4a3a22'), wep: T('bow', ''), off: T('quiver', '#7a5230') },
+  warden: { skin: '#f0c090', hs: 'short', hair: '#e8e0c8', beard: '#e8e0c8', head: T('helm', '#8a94a8'), body: T('plate', '#3a5a9a'), legs: T('greaves', '#2a3a6a'), boots: T('sabatons', '#2a2a2a'), wep: T('spear', ''), cape: T('cape', '#3a5a9a') },
+  forgemaster: { skin: '#8a5a3a', hs: 'short', hair: '#2a1a12', beard: '#2a1a12', head: T('cap', '#3a2a2a'), body: T('vest', '#6a3a2a'), legs: T('pants', '#3a2a22'), boots: T('boots', '#2a1a12'), wep: T('mace', ''), apron: true },
+};
+function npcOptions(s) {
+  const o = { skin: s.skin, hs: s.hs || 'short', hair: s.hair, eye: '#1a1a2a', es: 'round', fm: 'none', job: '', head: s.head || null, body: s.body || null, legs: s.legs || null, boots: s.boots || null, gloves: null, cape: s.cape || null, off: s.off || null, wep: s.wep || null, amu: null, ring: null, beard: s.beard, apron: s.apron };
+  o.tunic = o.body ? o.body.cl : '#d8d0c0'; o.pants = o.legs ? o.legs.cl : '#6a5a4a'; o.bootCol = o.boots ? o.boots.cl : '#4a3a2a'; o.belt = s.belt || '#3a2a1a';
+  o.hat = o.head ? HERO_HAT[o.head.b] || 'cap' : 'none'; o.hatCol = o.head ? o.head.cl : null; o.weapon = o.wep ? o.wep.b : null; o.blade = BLADE[0];
+  if (o.off) { if (o.off.b === 'shield') { o.shield = true; o.shieldCol = o.off.cl; } else o.offhand = o.off.b; o.offCol = o.off.cl; }
+  return o;
+}
+/** an NPC by its `key` (elder, shop, guard, scout, warden, forgemaster); fr 0 idle, 4 breath, 5 blink */
+export function npcSprite(key, dir = 0, fr = 0) {
+  return memo(`n${key}${dir}${fr}`, () => render(npcOptions(NPC32[key] || NPC32.shop), dir, fr, 0));
 }
