@@ -73,8 +73,8 @@ const DEFAULT_COLOR = {
 };
 export const defaultColor = (b) => DEFAULT_COLOR[b] || '#aab2c0';
 
-/** compact per-player visual summary sent with every state packet: head, body, legs, boots, gloves, cape, offhand, weapon */
-export const VIS_ORDER = ['head', 'body', 'legs', 'boots', 'gloves', 'cape', 'offhand', 'weapon'];
+/** compact per-player visual summary sent with every state packet: what is worn on the body, plus the amulet and first ring */
+export const VIS_ORDER = ['head', 'body', 'legs', 'boots', 'gloves', 'cape', 'offhand', 'weapon', 'amulet', 'ring1'];
 export const visTokens = (eq) => VIS_ORDER.map((k) => (eq[k] ? `${eq[k].b}~${eq[k].cl || ''}~${eq[k].r}` : ''));
 
 /** what every new hero starts wearing: slot -> [kind, dye]. The job's weapon comes from JOBS[job].start. */

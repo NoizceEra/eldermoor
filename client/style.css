@@ -192,6 +192,10 @@ body.touch #char { top: 8px; left: 8px; right: 8px; width: auto; max-height: 90v
 #login { overflow: auto; justify-content: flex-start; }
 #loginForm { margin: auto; }
 .creator { display: flex; gap: 14px; align-items: center; }
+.tryon { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: center; gap: 12px; padding: 6px; background: #1b1530; box-shadow: 0 0 0 2px #3a2f60; cursor: pointer; margin: 6px 0; }
+.tryon canvas { width: 96px; height: 96px; image-rendering: pixelated; background: var(--ink); }
+.tryon .tcell { text-align: center; }
+.tryon .tarrow { font-size: 18px; color: var(--gold); }
 .creator canvas, .bigprev { width: 96px; height: 96px; image-rendering: pixelated; background: var(--ink); flex: none; box-shadow: 0 0 0 2px #3a2f60; }
 .lookrows { display: flex; flex-direction: column; gap: 5px; flex: 1; }
 .lrow { display: flex; align-items: center; gap: 6px; font-size: 8px; }

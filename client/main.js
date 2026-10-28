@@ -860,6 +860,31 @@ function renderQuest() {
   else el.innerHTML = `<b>?</b> ${esc(Q.title)}<br>Return to ${gname}`;
 }
 
+/** the hero's worn tokens with `it` swapped in, so a buyer can see exactly how it would look */
+const TRY_SLOT = { head: 0, body: 1, legs: 2, boots: 3, gloves: 4, cape: 5, offhand: 6, weapon: 7, amulet: 8, ring: 9 };
+let tryDir = 0;
+function tryOnVs(it) {
+  const vs = visTokens(me.eq), i = TRY_SLOT[it.s];
+  if (i !== undefined) vs[i] = `${it.b}~${it.cl || ''}~${it.r}`;
+  return vs;
+}
+/** "Wearing" and "With this" side by side; click to turn the hero around */
+function tryOnPanel(it) {
+  const box = mkEl('div', 'tryon');
+  const draw = () => {
+    box.innerHTML = '';
+    const mk = (vs, label) => {
+      const cv = document.createElement('canvas'); cv.width = 32; cv.height = 32;
+      cv.getContext('2d').drawImage(HERO.heroSprite(me.look, vs, tryDir, 0, me.job), 0, 0);
+      const cell = mkEl('div', 'tcell'); cell.append(cv, mkEl('div', 'small', label)); return cell;
+    };
+    box.append(mk(visTokens(me.eq), 'Wearing'), mkEl('div', 'tarrow', '&rarr;'), mk(tryOnVs(it), 'With this'));
+  };
+  box.title = 'Click to turn around';
+  box.onclick = () => { tryDir = [3, 2, 0, 1][tryDir]; draw(); };
+  draw();
+  return box;
+}
 function itemTip(it) {
   const r = RARITY[it.r];
   const lines = [`<span style="color:${r.c}">${esc(it.n)}</span> <span class="small">${r.n}</span>`];
@@ -913,6 +938,7 @@ function showInfo(it, act, label, slot) {
   const box = $('itemInfo');
   if (!it) { box.innerHTML = '<span class="small">Empty slot.</span>'; return; }
   box.innerHTML = `${itemTip(it)}<div class="btns"></div>`;
+  if (it.s !== 'potion' && TRY_SLOT[it.s] !== undefined) box.insertBefore(tryOnPanel(it), box.querySelector('.btns'));
   const b = box.querySelector('.btns');
   const mk = (txt, fn) => { const x = document.createElement('button'); x.textContent = txt; x.onclick = fn; b.appendChild(x); };
   mk(label, act);
@@ -940,8 +966,13 @@ function openDialog(m) {
   txt.innerHTML = `<div class="title">${esc(m.name)}${m.title ? ` - ${esc(m.title)}` : ''}</div>${esc(m.text)}${m.reward ? `<div class="rew">Reward: ${esc(m.reward)}</div>` : ''}`;
   top.append(pc, txt); box.appendChild(top);
   if (m.shop) {
+    let tryBox = null;
+    const showTry = (it) => { if (TRY_SLOT[it.s] === undefined) return; const nb = tryOnPanel(it); if (tryBox) tryBox.replaceWith(nb); tryBox = nb; };
+    const firstGear = m.shop.find((x) => TRY_SLOT[x.s] !== undefined);
+    if (firstGear) { tryBox = tryOnPanel(firstGear); box.appendChild(tryBox); box.appendChild(mkEl('div', 'small', 'Tap or hover an item to try it on.')); }
     m.shop.forEach((it, i) => {
       const row = document.createElement('div'); row.className = 'shopRow';
+      row.onmouseenter = row.onclick = () => showTry(it);
       const stats = statParts(it).join(' ');
       row.innerHTML = `<img src="${iconURL(it.b, it.r, it.cl)}"><div class="grow"><span style="color:${RARITY[it.r].c}">${esc(it.n)}</span><br><span class="small">${stats}</span></div><span style="color:#ffd23a">${it.price}g</span>`;
       const b = document.createElement('button'); b.textContent = 'Buy'; b.onclick = () => tx({ t: 'buy', i }); row.appendChild(b);
@@ -1466,10 +1497,7 @@ addEventListener('touchstart', enableTouch, { once: true, passive: true }); // h
 // ---- character creator (login) and the shared look pickers
 let selLook = (() => { try { const l = JSON.parse(localStorage.getItem('em_look')); return Array.isArray(l) && (l.length === LOOK_LIMITS.length || l.length === 4) ? [...l, 0, 0].slice(0, LOOK_LIMITS.length) : null; } catch { return null; } })() || defaultLook('hero');
 let prevDir = 0;
-function previewVis(job) {
-  const kit = STARTER_KIT[job] || {}, t = (slot) => (kit[slot] ? `${kit[slot][0]}~${kit[slot][1]}~0` : '');
-  return [t('head'), t('body'), t('legs'), t('boots'), '', '', t('offhand'), `${JOBS[job].start}~~0`];
-}
+const previewVis = (job) => HERO.starterTokens(job);
 function drawPrev(cv, look, vs, dir = 0, fr = 0, job = '') {
   const x = cv.getContext('2d');
   x.clearRect(0, 0, 32, 32);

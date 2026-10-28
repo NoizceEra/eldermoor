@@ -6,19 +6,22 @@
 //   fr  0 idle   1 stride A   2 passing   3 stride B   4 idle breath   5 blink
 //   act 0 none   2 strike     3 follow-through         4 cast
 // Facing: 0 down, 1 up, 2 left (the right-facing canvas mirrored), 3 right.
-import { Grid, adj, heroOptions, PRESET, SKINS, BLADE, WOOD, JOB_EYE } from '/client/sprites.js';
+import { Grid, adj, BLADE, WOOD, JOB_EYE } from '/client/sprites.js';
 import { JOBS } from '/shared/jobs.js';
+import { SKIN_TONES, HAIR_STYLES, HAIR_COLORS, EYE_COLORS, EYE_STYLES, FACE_MARKS, STARTER_KIT, defaultColor } from '/shared/gear.js';
 
 const RED = '#c03a3a', BONE = '#e6e2cc', GOLD = '#e8c04a', DARK = '#2a2a3a', INK = '#1a1a22';
 export const HERO_SIZE = 32;
 const WS = 0.82; // weapons are a little shorter than the grown-up sprite's, to suit the proportions
 
-/** thick line of w x w squares; the last `hand` steps use the hand colour */
-function limb(g, x0, y0, x1, y1, w, col, handCol, hand = 2) {
-  const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0)) || 1;
+/** thick line of w x w squares. Counting back from the hand: `hand` steps of handCol, then the cuff colours
+ *  (cycled), then `bare` steps of bare skin, then the sleeve. */
+function limb(g, x0, y0, x1, y1, w, col, handCol, hand = 2, cuff = null, bare = 0, skin = null) {
+  const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0)) || 1, cn = cuff ? cuff.length : 0;
   for (let i = 0; i <= n; i++) {
-    const x = Math.round(x0 + ((x1 - x0) * i) / n), y = Math.round(y0 + ((y1 - y0) * i) / n);
-    g.rect(x - (w >> 1), y - (w >> 1), w, w, i > n - hand ? handCol : col);
+    const x = Math.round(x0 + ((x1 - x0) * i) / n), y = Math.round(y0 + ((y1 - y0) * i) / n), rem = n - i;
+    const c = rem < hand ? handCol : rem < hand + cn ? cuff[(rem - hand) % cn] : rem < hand + cn + bare ? skin : col;
+    g.rect(x - (w >> 1), y - (w >> 1), w, w, c);
   }
 }
 
@@ -277,6 +280,26 @@ function accentFx(g, o) {
   else if (o.job === 'paladin') { t(2, 15, '#fff2a0'); }
 }
 
+// ---------------------------------------------------------------- options from look + worn tokens
+const RAR = ['', '', '#4aa3ff', '#c06bff']; // trim colour of rare and epic pieces
+const HERO_HAT = { cap: 'cap', hood: 'hood', helm: 'helm', crown: 'crown', horns: 'horns', circlet: 'circlet', wizhat: 'wizard' };
+/** the full set of layer options. vs order: head, body, legs, boots, gloves, cape, offhand, weapon, amulet, ring */
+export function buildOptions(lk, vs, job = '') {
+  const tok = (i) => { const [b, cl, r] = (vs[i] || '').split('~'); return b ? { b, cl: cl || defaultColor(b), r: Number(r) || 0 } : null; };
+  const [head, body, legs, boots, gloves, cape, off, wep, amu, ring] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map(tok);
+  const o = {
+    skin: SKIN_TONES[lk[0]] || SKIN_TONES[1], hs: HAIR_STYLES[lk[1]] || 'short', hair: HAIR_COLORS[lk[2]] || HAIR_COLORS[1], eye: EYE_COLORS[lk[3]] || EYE_COLORS[0],
+    es: EYE_STYLES[lk[4]] || 'round', fm: FACE_MARKS[lk[5]] || 'none', job,
+    head, body, legs, boots, gloves, cape, off, wep, amu, ring,
+    tunic: body ? body.cl : '#d8d0c0', pants: legs ? legs.cl : '#6a5a4a', bootCol: boots ? boots.cl : '#4a3a2a', belt: '#3a2a1a',
+    hat: head ? HERO_HAT[head.b] || 'cap' : 'none', hatCol: head ? head.cl : null,
+    weapon: wep ? wep.b : null, blade: BLADE[wep ? wep.r : 0],
+  };
+  if (JOB_EYE[job]) o.eye = JOB_EYE[job];
+  if (off) { if (off.b === 'shield') { o.shield = true; o.shieldCol = off.cl; } else o.offhand = off.b; o.offCol = off.cl; }
+  return o;
+}
+
 // ---------------------------------------------------------------- the whole figure
 function render(o, dir, fr, act) {
   const g = new Grid(32, 32);
@@ -284,10 +307,22 @@ function render(o, dir, fr, act) {
   const stride = fr === 1 ? -1 : fr === 3 ? 1 : 0;
   const by = fr === 1 || fr === 3 || fr === 4 ? 1 : 0; // head and torso settle on stride and breath frames
   const y = (v) => v + by;
-  const skin = o.skin, pants = o.pants, boots = o.boots, tunic = o.tunic, sleeve = o.sleeve || tunic;
-  const glove = o.gloves || skin;
-  const wep = o.weapon, bow = wep === 'bow';
-  const cast = act === 4;
+  const skin = o.skin, pants = o.pants, tunic = o.tunic;
+  const B = o.body ? o.body.b : 'none', L = o.legs ? o.legs.b : 'pants', BT = o.boots ? o.boots.b : 'boots', GL = o.gloves ? o.gloves.b : 'none', CP = o.cape ? o.cape.b : 'none';
+  const rc = (it) => (it && it.r >= 2 ? RAR[it.r] : null); // a rare+ piece gets a coloured trim
+  const wep = o.weapon, bow = wep === 'bow', cast = act === 4;
+
+  // ---- sleeves by body kind; gloves decide the cuff and the hand
+  const sleeve = B === 'vest' ? '#e8e0d0' : B === 'plate' ? adj(tunic, 1.12) : tunic;
+  const skinD = adj(skin, 0.82);
+  let handCol = skin, cuff = null, bare = 0;
+  if (B === 'tunic') bare = 1;
+  if (B === 'robe') cuff = [rc(o.body) || adj(tunic, 1.3)];
+  if (B === 'plate') cuff = [adj(tunic, 0.8), adj(tunic, 1.3)];
+  if (GL === 'gloves') { handCol = o.gloves.cl; cuff = [rc(o.gloves) || adj(o.gloves.cl, 0.72)]; bare = 0; }
+  else if (GL === 'gauntlets') { handCol = o.gloves.cl; cuff = [adj(o.gloves.cl, 1.3), rc(o.gloves) || adj(o.gloves.cl, 0.7)]; bare = 0; }
+  else if (GL === 'wraps') { handCol = '#e8e0d0'; cuff = ['#e8e0d0', o.gloves.cl, '#e8e0d0']; bare = 0; }
+  const arm = (x0, y0, x1, y1, shade = 1) => limb(g, x0, y0, x1, y1, 2, adj(sleeve, shade), adj(handCol, shade), 2, cuff && cuff.map((c) => adj(c, shade)), bare, adj(skin, shade));
 
   // ---- hands: [x, y] and the weapon direction, per facing and pose
   let handR, handL, wv;
@@ -307,89 +342,142 @@ function render(o, dir, fr, act) {
 
   // ---- layers behind the body
   hairUnder(g, o, y);
-  if (o.cape) { if (front) g.rect(9, y(18), 14, 10, o.cape); else if (side) g.rect(10, y(18), 5, 10, o.cape); }
+  if (o.cape) {
+    const cp = o.cape.cl, cdk = adj(cp, 0.78), trim = rc(o.cape);
+    const long = CP === 'cloak', bot = long ? 28 : CP === 'mantle' ? 25 : 26;
+    if (front) { g.rect(long ? 8 : 9, y(17), long ? 16 : 14, bot - 17, cp); g.rect(long ? 8 : 9, bot - 1, long ? 16 : 14, 1, trim || cdk); g.rect(long ? 8 : 9, y(18), 1, bot - 18, cdk); }
+    else if (side) { g.rect(long ? 9 : 10, y(18), long ? 6 : 5, bot - 18, cp); g.rect(long ? 9 : 10, bot - 1, long ? 6 : 5, 1, trim || cdk); }
+  }
   if (o.offhand === 'quiver' && side) { g.rect(11, y(13), 3, 10, o.offCol || '#7a5230'); g.rect(11, y(12), 1, 1, '#e8e8e8'); g.rect(13, y(12), 1, 1, '#cc3a3a'); }
-  if (side) limb(g, 14, y(18), handL[0], handL[1], 2, adj(sleeve, 0.78), adj(glove, 0.8));
+  if (side) arm(14, y(18), handL[0], handL[1], 0.78);
 
   // ---- legs and boots
-  const leg = (x, w, lift, toe) => {
-    const ph = 3 - lift;
-    g.rect(x, 24, w, ph, lift ? adj(pants, 0.9) : pants);
-    g.rect(x, 24 + ph, w, 2, boots); g.rect(x, 26 + ph, w + toe, 1, adj(boots, 0.7)); if (toe) g.rect(x + w, 25 + ph, 1, 1, boots);
+  const pt = rc(o.legs), bt = rc(o.boots), bcol = o.bootCol;
+  const leg = (x, w, lift, toe, outer) => {
+    const ph = 3 - lift, lc = lift ? adj(pants, 0.9) : pants;
+    g.rect(x, 24, w, ph, lc);
+    if (L === 'leggings') { g.rect(x, 24, 1, ph, adj(lc, 1.28)); g.rect(x + w - 1, 24, 1, ph, adj(lc, 0.78)); }
+    else if (L === 'greaves') { g.rect(x, 25, w, 1, adj(lc, 1.45)); if (ph > 2) g.rect(x, 26, w, 1, adj(lc, 0.72)); g.rect(x, 24, w, 1, adj(lc, 0.9)); }
+    if (pt) g.rect(outer, 24, 1, ph, pt);
+    const fy = 24 + ph;
+    if (BT === 'shoes') { g.rect(x, fy, w, 1, '#e8e0d0'); g.rect(x, fy + 1, w, 1, bcol); g.rect(x, fy + 2, w + toe, 1, adj(bcol, 0.65)); if (toe) g.rect(x + w, fy + 1, 1, 1, bcol); }
+    else if (BT === 'sabatons') {
+      g.rect(x, fy, w, 1, bt || adj(bcol, 1.35)); g.rect(x, fy + 1, w, 1, bcol); g.rect(x, fy + 2, w + toe, 1, adj(bcol, 0.6));
+      g.set(x + (toe ? w : w - 1), fy + 1, adj(bcol, 1.5)); if (toe) g.set(x - 1, fy + 2, '#c8a040'); else g.set(x, fy + 2, adj(bcol, 1.4));
+    } else { g.rect(x, fy, w, 1, bt || adj(bcol, 1.3)); g.rect(x, fy + 1, w, 1, bcol); g.rect(x, fy + 2, w + toe, 1, adj(bcol, 0.65)); if (toe) g.rect(x + w, fy + 1, 1, 1, bcol); }
   };
-  if (!side) { leg(12, 3, stride === -1 ? 1 : 0, 0); leg(17, 3, stride === 1 ? 1 : 0, 0); }
+  if (!side) { leg(12, 3, stride === -1 ? 1 : 0, 0, 12); leg(17, 3, stride === 1 ? 1 : 0, 0, 19); }
   else {
     const bx = 13 + (stride === -1 ? -2 : stride === 1 ? 2 : 0), fx = 16 + (stride === -1 ? 2 : stride === 1 ? -2 : 0);
-    leg(bx, 3, stride === -1 ? 1 : 0, 1); leg(fx, 3, stride === 1 ? 1 : 0, 1);
+    leg(bx, 3, stride === -1 ? 1 : 0, 1, bx); leg(fx, 3, stride === 1 ? 1 : 0, 1, fx);
   }
 
-  // ---- torso and body armour
+  // ---- torso and body armour, by kind
+  const hemT = rc(o.body);
   if (!side) {
     g.rect(11, y(17), 10, 5, tunic); g.rect(12, y(22), 8, 2, tunic); g.rect(11, y(22), 10, 1, o.belt);
     if (front) g.rect(15, y(22), 2, 1, GOLD);
-    if (o.robe) { g.rect(10, y(23), 12, 4, tunic); g.rect(9, 26, 14, 2, adj(tunic, 0.85)); }
+    if (B === 'robe') { g.rect(10, y(23), 12, 4, tunic); g.rect(9, 26, 14, 2, hemT || adj(tunic, 0.82)); if (front) { g.rect(15, y(17), 2, 10, adj(tunic, 0.8)); g.rect(14, y(17), 4, 1, skin); } }
+    else if (B === 'plate') { g.rect(11, y(23), 4, 2, adj(tunic, 0.9)); g.rect(17, y(23), 4, 2, adj(tunic, 0.9)); g.rect(11, y(24), 4, 1, adj(tunic, 0.7)); g.rect(17, y(24), 4, 1, adj(tunic, 0.7)); }
+    else if (B === 'mail') { for (let x = 11; x < 21; x += 2) g.set(x, y(23), adj(tunic, 1.3)); }
+    else if (B === 'tunic') { g.rect(11, y(23), 10, 1, adj(tunic, 0.85)); }
   } else {
     g.rect(13, y(17), 7, 5, tunic); g.rect(14, y(22), 5, 2, tunic); g.rect(13, y(22), 7, 1, o.belt);
-    if (o.robe) { g.rect(12, y(23), 9, 4, tunic); g.rect(11, 26, 11, 2, adj(tunic, 0.85)); }
+    if (B === 'robe') { g.rect(12, y(23), 9, 4, tunic); g.rect(11, 26, 11, 2, hemT || adj(tunic, 0.82)); }
+    else if (B === 'plate') { g.rect(13, y(23), 6, 2, adj(tunic, 0.9)); g.rect(13, y(24), 6, 1, adj(tunic, 0.7)); }
+    else if (B === 'tunic') g.rect(13, y(23), 7, 1, adj(tunic, 0.85));
   }
-  if (o.bk && !back) {
+  if (!back) {
     const lt = adj(tunic, 1.25), dk = adj(tunic, 0.68), x0 = side ? 13 : 12, w = side ? 7 : 8;
-    if (o.bk === 'mail') { for (let yy = 17; yy < 22; yy++) for (let x = x0; x < x0 + w; x++) if ((x + yy) % 2) g.set(x, y(yy), lt); }
-    else if (o.bk === 'leather') { g.rect(15, y(17), 2, 5, dk); if (!side) for (let yy = 17; yy < 22; yy += 2) { g.set(13, y(yy), lt); g.set(18, y(yy), lt); } }
-    else if (o.bk === 'plate') { if (!side) { g.rect(8, y(17), 4, 3, lt); g.rect(20, y(17), 4, 3, lt); g.rect(14, y(17), 4, 4, lt); g.rect(12, y(21), 8, 1, dk); } else { g.rect(13, y(17), 5, 3, lt); g.rect(15, y(19), 3, 3, lt); g.rect(13, y(21), 7, 1, dk); } }
+    if (B === 'mail') { for (let yy = 17; yy < 22; yy++) for (let x = x0; x < x0 + w; x++) if ((x + yy) % 2) g.set(x, y(yy), lt); }
+    else if (B === 'vest') {
+      if (!side) { g.rect(11, y(17), 10, 5, '#e8e0d0'); g.rect(11, y(17), 3, 6, tunic); g.rect(18, y(17), 3, 6, tunic); g.rect(14, y(17), 4, 1, adj('#e8e0d0', 0.85)); for (let yy = 18; yy < 22; yy += 2) g.rect(15, y(yy), 2, 1, dk); g.rect(11, y(17), 1, 6, lt); }
+      else { g.rect(13, y(17), 7, 5, '#e8e0d0'); g.rect(14, y(17), 5, 5, tunic); g.rect(14, y(17), 1, 5, lt); }
+    } else if (B === 'plate') {
+      if (!side) { g.rect(12, y(17), 8, 5, lt); g.rect(15, y(17), 2, 5, adj(lt, 1.2)); g.rect(12, y(21), 8, 1, dk); g.rect(12, y(17), 8, 1, adj(lt, 1.25)); }
+      else { g.rect(14, y(17), 5, 5, lt); g.rect(14, y(21), 5, 1, dk); }
+    } else if (B === 'tunic') { g.rect(13, y(17), side ? 5 : 6, 1, lt); }
+    if (hemT && B !== 'robe') { if (!side) g.rect(11, y(17), 10, 1, hemT); else g.rect(13, y(17), 7, 1, hemT); }
   }
 
   // ---- arms
-  if (!side) {
-    limb(g, 10, y(18), handL[0], handL[1], 2, sleeve, glove);
-    limb(g, 22, y(18), handR[0], handR[1], 2, sleeve, glove);
-  } else limb(g, 16, y(18), handR[0], handR[1], 2, sleeve, glove);
-  if (back && o.cape) { g.rect(10, y(17), 12, 11, o.cape); g.rect(15, y(18), 2, 9, adj(o.cape, 0.8)); }
+  if (!side) { arm(10, y(18), handL[0], handL[1]); arm(22, y(18), handR[0], handR[1]); } else arm(16, y(18), handR[0], handR[1]);
+  if (B === 'plate') { // pauldrons sit over the arms
+    const pl = adj(tunic, 1.25), pd = adj(tunic, 0.72), ptr = rc(o.body);
+    const pp = (x0, w) => { g.rect(x0, y(17), w, 3, pl); g.rect(x0, y(17), w, 1, adj(pl, 1.2)); g.rect(x0, y(19), w, 1, pd); if (ptr) g.set(x0 + (w >> 1), y(18), ptr); };
+    if (!side) { pp(8, 4); pp(20, 4); } else pp(13, 5);
+  }
+
+  // ---- capes that fall in front of the body: back view panel, cloak collar, mantle shoulders
+  if (o.cape) {
+    const cp = o.cape.cl, cdk = adj(cp, 0.78), trim = rc(o.cape), long = CP === 'cloak';
+    if (back) {
+      const bot = long ? 28 : CP === 'mantle' ? 25 : 26;
+      g.rect(long ? 9 : 10, y(17), long ? 14 : 12, bot - 17, cp); g.rect(15, y(18), 2, bot - 19, cdk); g.rect(long ? 9 : 10, bot - 1, long ? 14 : 12, 1, trim || cdk);
+      if (CP === 'cape') g.rect(10, y(17), 12, 1, adj(cp, 1.25));
+    }
+    if (CP === 'cloak') { g.rect(10, y(16), 12, 2, adj(cp, 1.18)); if (front) { g.rect(15, y(18), 2, 1, GOLD); g.rect(14, y(17), 4, 1, adj(cp, 0.7)); } }
+    else if (CP === 'cape') { if (!side) { g.set(11, y(17), GOLD); g.set(20, y(17), GOLD); } else g.set(14, y(17), GOLD); }
+    else if (CP === 'mantle') {
+      const fur = (x0, w) => { g.rect(x0, y(17), w, 3, cp); for (let x = x0; x < x0 + w; x++) g.set(x, y(20), (x & 1) ? '#f2f2f2' : '#cfcfcf'); };
+      if (!side) fur(8, 16); else fur(12, 8);
+      if (trim) g.rect(side ? 12 : 8, y(17), side ? 8 : 16, 1, trim);
+    }
+  }
 
   // ---- head, hair, head gear
   headShape(g, y, skin);
-  if (side) { g.rect(13, y(10), 2, 3, adj(skin, 0.82)); g.set(23, y(12), skin); }
+  if (side) { g.rect(13, y(10), 2, 3, skinD); g.set(23, y(12), skin); }
   hairOver(g, o, dir, y);
   hat(g, o, dir, y);
+  if (o.head && o.head.r >= 2 && !back) { const hc = RAR[o.head.r]; g.set(11, y(3), hc); g.set(20, y(3), hc); if (o.head.r >= 3) g.set(15, y(2), '#ffffff'); }
 
   g.relief().shade();
 
   // ---- class accents, face, then crisp details
   accent(g, o, dir, y, front, back, side);
   face(g, o, dir, y, fr === 5);
-  if (o.trim) { g.set(9, y(18), o.trim); g.set(22, y(18), o.trim); g.set(15, y(21), o.trim); g.set(16, y(21), o.trim); }
+  if (o.amu && !back) {
+    const ac = o.amu.cl, chain = '#d8c070';
+    if (front) { for (const [x, yy] of [[13, 17], [14, 18], [15, 19], [16, 19], [17, 18], [18, 17]]) g.set(x, y(yy), chain); g.rect(15, y(20), 2, 2, ac); g.set(15, y(20), '#ffffff'); }
+    else { g.set(17, y(18), chain); g.rect(17, y(19), 2, 2, ac); g.set(17, y(19), '#ffffff'); }
+  }
 
   // ---- off-hand
-  if (o.shield && !back) {
-    const sc = o.shieldCol || '#5a6a8a', sh = adj(sc, 1.35);
-    const sx = side ? 11 : 2, sy = y(18);
-    g.rect(sx, sy, 8, 6, sc); g.rect(sx + 1, sy + 6, 6, 2, sc); g.rect(sx + 2, sy + 8, 4, 1, sc);
-    g.rect(sx, sy, 8, 1, sh); g.rect(sx + 3, sy + 1, 2, 6, GOLD); g.rect(sx + 1, sy + 3, 6, 1, GOLD); g.rect(sx + 7, sy + 1, 1, 6, adj(sc, 0.7));
-    if (!side) limb(g, 10, y(18), 8, sy + 4, 2, sleeve, glove);
+  if (o.shield) {
+    const sc = o.shieldCol || '#5a6a8a', sh = adj(sc, 1.35), tr = rc(o.off) || GOLD;
+    if (back) {
+      g.rect(11, y(17), 10, 7, sc); g.rect(12, y(24), 8, 2, sc); g.rect(13, y(26), 6, 1, sc); g.rect(11, y(17), 10, 1, sh); g.rect(20, y(18), 1, 7, adj(sc, 0.7)); g.rect(15, y(18), 2, 7, adj(sc, 0.85)); g.rect(11, y(21), 10, 1, tr);
+    } else {
+      const sx = side ? 11 : 2, sy = y(18);
+      g.rect(sx, sy, 8, 6, sc); g.rect(sx + 1, sy + 6, 6, 2, sc); g.rect(sx + 2, sy + 8, 4, 1, sc);
+      g.rect(sx, sy, 8, 1, sh); g.rect(sx + 3, sy + 1, 2, 6, tr); g.rect(sx + 1, sy + 3, 6, 1, tr); g.rect(sx + 7, sy + 1, 1, 6, adj(sc, 0.7));
+      if (!side) limb(g, 10, y(18), 8, sy + 4, 2, sleeve, handCol);
+    }
   }
   if (o.offhand === 'tome' && !back) {
-    const bx = side ? 18 : 4, byy = y(20);
-    g.rect(bx, byy, 6, 7, o.offCol || '#8a3a3a'); g.rect(bx, byy, 2, 7, adj(o.offCol || '#8a3a3a', 0.7)); g.rect(bx + 5, byy + 1, 1, 5, '#e8d8a0'); g.rect(bx + 2, byy + 2, 2, 2, GOLD);
+    const bx = side ? 18 : 4, byy = y(20), tc = o.offCol || '#8a3a3a';
+    g.rect(bx, byy, 6, 7, tc); g.rect(bx, byy, 2, 7, adj(tc, 0.7)); g.rect(bx + 5, byy + 1, 1, 5, '#e8d8a0'); g.rect(bx + 2, byy + 2, 2, 2, rc(o.off) || GOLD);
   }
+  if (o.offhand === 'tome' && back) { const tc = o.offCol || '#8a3a3a'; g.rect(20, y(21), 4, 5, tc); g.rect(20, y(21), 1, 5, adj(tc, 0.7)); }
   if (o.offhand === 'quiver' && !side) {
     const q = o.offCol || '#7a5230';
     if (back) { g.rect(19, y(11), 3, 12, q); g.rect(19, y(11), 3, 1, adj(q, 0.7)); for (const [x, col] of [[19, '#cc3a3a'], [20, '#e8e8e8'], [21, '#cc3a3a']]) g.rect(x, y(9), 1, 3, col); }
     else { g.rect(22, y(11), 2, 7, q); for (const [x, col] of [[22, '#e8e8e8'], [23, '#cc3a3a']]) g.rect(x, y(9), 1, 3, col); }
   }
 
-  // ---- weapon
+  // ---- weapon, then the ring on the weapon hand
   let tip = null;
-  if (wep) {
-    const w = back ? handL : handR;
-    tip = weapon(g, wep, w[0], w[1], wv[0], wv[1], o.blade || BLADE[0]);
-    g.rect(w[0] - 1, w[1] - 1, 3, 3, glove);
-  }
+  const w = back ? handL : handR;
+  if (wep) { tip = weapon(g, wep, w[0], w[1], wv[0], wv[1], o.blade || BLADE[0]); g.rect(w[0] - 1, w[1] - 1, 3, 3, handCol); }
+  if (o.ring && !back) g.set(w[0] + 1, w[1] + 1, o.ring.cl);
 
   g.outline();
 
-  // ---- motion fx painted over the outline
+  // ---- fx painted over the outline: rarity glints, strike arcs, cast sparks
   const J = JOBS[o.job], fxc = J ? J.color : '#ffffff';
   const put = (x, yy, col) => { x = Math.round(x); yy = Math.round(yy); if (x >= 0 && yy >= 0 && x < 32 && yy < 32 && !g.get(x, yy)) g.set(x, yy, col); };
+  if (o.wep && o.wep.r >= 2 && tip) { put(tip[0] + 2, tip[1] - 1, '#ffffff'); put(tip[0] - 2, tip[1] + 1, RAR[o.wep.r]); if (o.wep.r >= 3) put(tip[0], tip[1] - 3, '#ffffff'); }
   if (act === 2 && wep && tip) {
     const melee = ['sword', 'axe', 'mace', 'dagger', 'spear'].includes(wep), hand = back ? handL : handR;
     if (melee) {
@@ -411,13 +499,18 @@ function render(o, dir, fr, act) {
 const cache = new Map();
 const memo = (k, f) => { let v = cache.get(k); if (!v) { v = f(); cache.set(k, v); } return v; };
 
-/** lk = look fields, vs = worn-gear tokens, job = job id for the class accents */
+/** lk = look fields, vs = worn-gear tokens (VIS_ORDER), job = job id for the class accents */
 export function heroSprite(lk, vs, dir, fr = 0, job = '', act = 0) {
-  return memo(`h${lk.join('.')}|${vs.join(',')}|${dir}${fr}${job}${act}`, () => render(heroOptions(lk, vs, job), dir, fr, act));
+  return memo(`h${lk.join('.')}|${vs.join(',')}|${dir}${fr}${job}${act}`, () => render(buildOptions(lk, vs, job), dir, fr, act));
 }
 
-const CLASS_HAIR = { warrior: 'short', mage: 'long', ranger: 'ponytail', cleric: 'braid', rogue: 'spiky', warlock: 'bob', paladin: 'short', druid: 'twintails', necromancer: 'wild', monk: 'bun' };
-/** a class in its starter look, for the picker */
+const CLASS_LOOK = { warrior: [1, 0, 1, 0, 0, 0], mage: [0, 1, 5, 1, 3, 0], ranger: [2, 4, 2, 2, 0, 2], cleric: [0, 10, 3, 1, 0, 1], rogue: [1, 2, 0, 5, 1, 0], warlock: [0, 6, 7, 4, 1, 0], paladin: [0, 0, 3, 1, 0, 0], druid: [2, 7, 9, 2, 3, 2], necromancer: [0, 11, 5, 0, 1, 0], monk: [1, 8, 0, 3, 0, 0] };
+/** what a fresh hero of a class wears, as VIS tokens (starter kit + starter weapon) */
+export function starterTokens(cls) {
+  const kit = STARTER_KIT[cls] || {}, t = (slot) => (kit[slot] ? `${kit[slot][0]}~${kit[slot][1]}~0` : '');
+  return [t('head'), t('body'), t('legs'), t('boots'), t('gloves'), t('cape'), t('offhand'), `${JOBS[cls].start}~~0`, '', ''];
+}
+/** a class in its starter outfit, for the picker */
 export function classSprite(cls, dir = 0, fr = 0, act = 0) {
-  return memo(`c${cls}${dir}${fr}${act}`, () => render({ ...PRESET[cls], hs: CLASS_HAIR[cls] || 'short', skin: SKINS[0], blade: BLADE[0], job: cls, es: 'round', fm: 'none', ...(JOB_EYE[cls] ? { eye: JOB_EYE[cls] } : {}) }, dir, fr, act));
+  return heroSprite(CLASS_LOOK[cls] || [1, 0, 1, 0, 0, 0], starterTokens(cls), dir, fr, cls, act);
 }

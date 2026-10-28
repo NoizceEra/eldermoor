@@ -163,13 +163,20 @@ const slotSkill = async (b, slot, skill) => { b.tx({ t: 'bar', slot, skill }); a
 
 // monk: Flurry of Blows lands three separate hits
 {
-  const b = NEW.monk, s = await findSlime(b);
-  ok(!!s, 'found a slime for the monk');
-  const p = b.pos();
-  b.tx({ t: 'dbg', tp: [s.x + 1, s.y] }); await wait(250);
-  b.tx({ t: 'dbg', atkMul: 0.01 }); b.tx({ t: 'target', id: s.i }); b.evs.length = 0;
-  b.tx({ t: 'skill', n: 1 }); await wait(300);
-  ok(b.evs.filter((e) => e.e === 'dmg' && e.id === s.i).length >= 3 || !b.ents.find((e) => e.i === s.i), 'Flurry of Blows hits three times');
+  const b = NEW.monk;
+  let hits = 0;
+  for (let attempt = 0; attempt < 4 && hits < 3; attempt++) { // a slime can wander off between teleport and cast: try again after the cooldown
+    const s = await findSlime(b);
+    ok(!!s, 'found a slime for the monk');
+    b.tx({ t: 'dbg', tp: [s.x + 1, s.y] }); await wait(200);
+    const q = b.pos(), m = b.ents.find((e) => e.i === s.i);
+    if (!m || !q || Math.hypot(m.x - q.x, m.y - q.y) > 1.6) { await wait(3200); continue; }
+    b.tx({ t: 'dbg', atkMul: 0.01 }); b.tx({ t: 'target', id: s.i }); b.evs.length = 0;
+    b.tx({ t: 'skill', n: 1 }); await wait(300);
+    hits = b.evs.filter((e) => e.e === 'dmg' && e.id === s.i).length || (b.ents.find((e) => e.i === s.i) ? 0 : 3);
+    if (hits < 3) await wait(3200);
+  }
+  ok(hits >= 3, 'Flurry of Blows hits three times');
 }
 
 // druid: Entangling Roots pins a monster in place
@@ -189,21 +196,27 @@ const slotSkill = async (b, slot, skill) => { b.tx({ t: 'bar', slot, skill }); a
 
 // paladin: Righteous Charge closes the distance and strikes
 {
-  const b = NEW.paladin, s = await findSlime(b);
-  ok(!!s, 'found a slime for the paladin');
+  const b = NEW.paladin;
   await slotSkill(b, 1, 'charge');
   b.tx({ t: 'dbg', atkMul: 0.01 });
-  let far = false;
-  for (const [dx, dy] of [[5, 0], [-5, 0], [0, 5], [0, -5], [4, 2], [-4, -2]]) {
-    b.tx({ t: 'dbg', tp: [s.x + dx, s.y + dy] }); await wait(250);
+  let charged = false;
+  for (let attempt = 0; attempt < 4 && !charged; attempt++) { // slimes wander: re-find one and re-measure each time
+    const s = await findSlime(b);
+    ok(!!s, 'found a slime for the paladin');
+    let far = false;
+    for (const [dx, dy] of [[5, 0], [-5, 0], [0, 5], [0, -5], [4, 2], [-4, -2]]) {
+      b.tx({ t: 'dbg', tp: [s.x + dx, s.y + dy] }); await wait(250);
+      const q = b.pos(), m = b.ents.find((e) => e.i === s.i);
+      if (m && q && Math.hypot(m.x - q.x, m.y - q.y) > 3.5) { far = true; break; }
+    }
+    if (!far) { await wait(3200); continue; }
+    b.tx({ t: 'target', id: s.i }); b.evs.length = 0;
+    b.tx({ t: 'skill', n: 2 }); await wait(400);
     const q = b.pos(), m = b.ents.find((e) => e.i === s.i);
-    if (m && q && Math.hypot(m.x - q.x, m.y - q.y) > 3.5) { far = true; break; }
+    charged = (!m || Math.hypot(m.x - q.x, m.y - q.y) <= 1.6) && b.evs.some((e) => e.e === 'dmg' && e.id === s.i);
+    if (!charged) await wait(3200);
   }
-  ok(far, 'stood a few tiles from the slime');
-  b.tx({ t: 'target', id: s.i }); b.evs.length = 0;
-  b.tx({ t: 'skill', n: 2 }); await wait(400);
-  const q = b.pos(), m = b.ents.find((e) => e.i === s.i);
-  ok((!m || Math.hypot(m.x - q.x, m.y - q.y) <= 1.6) && b.evs.some((e) => e.e === 'dmg' && e.id === s.i), 'Righteous Charge rushes in and hits');
+  ok(charged, 'Righteous Charge rushes in and hits');
 }
 
 // druid + necromancer: party regeneration and a rooting area spell
