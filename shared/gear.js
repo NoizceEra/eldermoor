@@ -19,17 +19,20 @@ export function eqKeyFor(eq, it) {
 
 // ---- appearance
 export const SKIN_TONES = ['#f6d2b0', '#f0c090', '#e0a878', '#c68a5a', '#a06a40', '#6e4a30'];
-export const HAIR_STYLES = ['short', 'long', 'spiky', 'mohawk', 'ponytail', 'bald'];
-export const HAIR_COLORS = ['#2a1a12', '#5a3a22', '#8a5a2a', '#d8b050', '#c84a2a', '#e8e0c8', '#3a4a8a', '#8a3a8a'];
-export const EYE_COLORS = ['#1a1a2a', '#2a5a9a', '#2a8a4a', '#7a4a2a', '#8a2a8a', '#c03a3a'];
-export const LOOK_LIMITS = [SKIN_TONES.length, HAIR_STYLES.length, HAIR_COLORS.length, EYE_COLORS.length];
-export const LOOK_LABELS = ['Skin', 'Hair style', 'Hair colour', 'Eyes'];
+export const HAIR_STYLES = ['short', 'long', 'spiky', 'mohawk', 'ponytail', 'bald', 'bob', 'twintails', 'bun', 'curly', 'braid', 'wild'];
+export const HAIR_COLORS = ['#2a1a12', '#5a3a22', '#8a5a2a', '#d8b050', '#c84a2a', '#e8e0c8', '#3a4a8a', '#8a3a8a', '#d86aa0', '#3ab8a8', '#6ac85a', '#f08a2a'];
+export const EYE_COLORS = ['#1a1a2a', '#2a5a9a', '#2a8a4a', '#7a4a2a', '#8a2a8a', '#c03a3a', '#e8a820', '#6a2ac0'];
+export const EYE_STYLES = ['round', 'sharp', 'sleepy', 'sparkle'];
+export const FACE_MARKS = ['none', 'blush', 'freckles', 'scar', 'glasses', 'eyepatch'];
+export const LOOK_LIMITS = [SKIN_TONES.length, HAIR_STYLES.length, HAIR_COLORS.length, EYE_COLORS.length, EYE_STYLES.length, FACE_MARKS.length];
+export const LOOK_LABELS = ['Skin', 'Hair style', 'Hair colour', 'Eye colour', 'Eye shape', 'Face'];
 export const LOOK_COST = 50;
 
-/** [skin, hairStyle, hairColour, eyes] as small integers; returns null when malformed */
+/** [skin, hairStyle, hairColour, eyeColour, eyeShape, faceMark] as small integers; the older 4-field form is padded. null when malformed */
 export function validLook(l) {
-  if (!Array.isArray(l) || l.length !== 4) return null;
-  const out = l.map((v, i) => Math.floor(Number(v)));
+  if (!Array.isArray(l) || (l.length !== 4 && l.length !== LOOK_LIMITS.length)) return null;
+  const out = l.map((v) => Math.floor(Number(v)));
+  while (out.length < LOOK_LIMITS.length) out.push(0);
   return out.every((v, i) => Number.isInteger(v) && v >= 0 && v < LOOK_LIMITS[i]) ? out : null;
 }
 export function defaultLook(name = '') {

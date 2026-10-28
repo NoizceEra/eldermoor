@@ -253,9 +253,9 @@ function migrate(save) {
     }
     o.eq = eq;
     o.inv = (o.inv || []).map(migrateItem);
-    o.look = o.look || defaultLook(o.name);
     o.v = 3;
   }
+  o.look = validLook(o.look) || defaultLook(o.name); // pads looks saved before eye shapes and face marks existed
   // jobs added after a hero was saved start at level 0 (locked until first chosen)
   o.jobs = { ...(o.jobs || {}) };
   for (const j of JOB_ORDER) if (!o.jobs[j]) o.jobs[j] = { lvl: 0, xp: 0 };

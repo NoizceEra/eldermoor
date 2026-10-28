@@ -1464,7 +1464,7 @@ addEventListener('touchstart', enableTouch, { once: true, passive: true }); // h
 
 // ------------------------------------------------------------------ login screen
 // ---- character creator (login) and the shared look pickers
-let selLook = (() => { try { const l = JSON.parse(localStorage.getItem('em_look')); return Array.isArray(l) && l.length === 4 ? l : null; } catch { return null; } })() || defaultLook('hero');
+let selLook = (() => { try { const l = JSON.parse(localStorage.getItem('em_look')); return Array.isArray(l) && (l.length === LOOK_LIMITS.length || l.length === 4) ? [...l, 0, 0].slice(0, LOOK_LIMITS.length) : null; } catch { return null; } })() || defaultLook('hero');
 let prevDir = 0;
 function previewVis(job) {
   const kit = STARTER_KIT[job] || {}, t = (slot) => (kit[slot] ? `${kit[slot][0]}~${kit[slot][1]}~0` : '');
@@ -1475,7 +1475,7 @@ function drawPrev(cv, look, vs, dir = 0, fr = 0, job = '') {
   x.clearRect(0, 0, 32, 32);
   x.drawImage(HERO.heroSprite(look, vs, dir, fr, job), 0, 0);
 }
-const LOOK_PAL = [SKIN_TONES, null, HAIR_COLORS, EYE_COLORS];
+const LOOK_PAL = [SKIN_TONES, null, HAIR_COLORS, EYE_COLORS, null, null];
 function lookRows(box, look, onChange) {
   box.innerHTML = '';
   LOOK_LABELS.forEach((label, i) => {

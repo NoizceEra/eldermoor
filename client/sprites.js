@@ -2,7 +2,7 @@
 // two-tone bevel shade and a 1px dark outline, then cached as a canvas.
 import { hash2 } from '/shared/world.js';
 import { SKILLS, JOBS } from '/shared/jobs.js';
-import { SKIN_TONES, HAIR_STYLES, HAIR_COLORS, EYE_COLORS, defaultColor } from '/shared/gear.js';
+import { SKIN_TONES, HAIR_STYLES, HAIR_COLORS, EYE_COLORS, EYE_STYLES, FACE_MARKS, defaultColor } from '/shared/gear.js';
 
 const hex = (h) => { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
 const toHex = (a) => '#' + a.map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('');
@@ -408,7 +408,7 @@ export function heroOptions(lk, vs, job = '') {
   const tok = (i) => { const [b, cl, r] = (vs[i] || '').split('~'); return b ? { b, cl: cl || defaultColor(b), r: Number(r) || 0 } : null; };
   const head = tok(0), body = tok(1), legs = tok(2), boots = tok(3), gloves = tok(4), cape = tok(5), off = tok(6), wep = tok(7);
   const o = {
-    skin: SKIN_TONES[lk[0]] || SKIN_TONES[1], hs: HAIR_STYLES[lk[1]] || 'short', hair: HAIR_COLORS[lk[2]] || HAIR_COLORS[1], eye: EYE_COLORS[lk[3]] || EYE_COLORS[0],
+    skin: SKIN_TONES[lk[0]] || SKIN_TONES[1], hs: HAIR_STYLES[lk[1]] || 'short', hair: HAIR_COLORS[lk[2]] || HAIR_COLORS[1], eye: EYE_COLORS[lk[3]] || EYE_COLORS[0], es: EYE_STYLES[lk[4]] || 'round', fm: FACE_MARKS[lk[5]] || 'none',
     tunic: body ? body.cl : '#d8d0c0', pants: legs ? legs.cl : '#6a5a4a', boots: boots ? boots.cl : '#4a3a2a', belt: '#3a2a1a', hat: 'none',
     weapon: wep ? wep.b : null, blade: BLADE[wep ? wep.r : 0],
   };

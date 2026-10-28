@@ -53,7 +53,7 @@ if (!out.includes('listening')) fail('server did not start: ' + out);
 
 // ---------------------------------------------------------------- starter kit + looks
 const A = await bot('GearAlpha', 'warrior', [2, 3, 4, 1]);
-ok(JSON.stringify(A.me.look) === '[2,3,4,1]', 'a new hero keeps the look chosen in the creator');
+ok(JSON.stringify(A.me.look) === '[2,3,4,1,0,0]', 'a new hero keeps the look chosen in the creator');
 const bad = await bot('GearBad', 'mage', [99, -1, 'x', 0]);
 ok(JSON.stringify(bad.me.look) === JSON.stringify(defaultLook('GearBad')) && validLook(bad.me.look), 'an invalid look falls back to a valid default');
 for (const k of ['weapon', 'head', 'body', 'legs', 'boots', 'offhand']) ok(A.me.eq[k], `warrior starts wearing: ${k} (${A.me.eq[k] && A.me.eq[k].n})`);
@@ -65,7 +65,7 @@ const B = await bot('GearBeta', 'mage');
 await wait(500);
 const seen = B.ents.find((e) => e.i === A.me.id);
 ok(seen && seen.vs.length === VIS_ORDER.length && seen.vs[0].startsWith('helm~') && seen.vs[7].startsWith('sword~'), 'other players receive the worn-gear summary');
-ok(JSON.stringify(seen.lk) === '[2,3,4,1]', 'other players receive the look');
+ok(JSON.stringify(seen.lk) === '[2,3,4,1,0,0]', 'other players receive the look');
 
 // ---------------------------------------------------------------- every slot
 A.tx({ t: 'dbg', lvl: 30, god: false }); await wait(250);
@@ -130,15 +130,15 @@ A.tx({ t: 'look', look: [9, 9, 9, 9] }); await wait(200);
 ok(A.me.gold === gold0 && JSON.stringify(A.me.look) === JSON.stringify(look0), 'an invalid look is ignored and costs nothing');
 A.tx({ t: 'look', look: look0 }); await wait(200);
 ok(A.me.gold === gold0, 'applying the same look is free');
-A.tx({ t: 'look', look: [1, 2, 3, 4] }); await wait(250);
-ok(JSON.stringify(A.me.look) === '[1,2,3,4]' && A.me.gold === gold0 - LOOK_COST, `a new look in town costs ${LOOK_COST}g`);
+A.tx({ t: 'look', look: [1, 2, 3, 4, 2, 5] }); await wait(250);
+ok(JSON.stringify(A.me.look) === '[1,2,3,4,2,5]' && A.me.gold === gold0 - LOOK_COST, `a new look in town costs ${LOOK_COST}g`);
 await wait(500);
-ok(JSON.stringify(B.ents.find((e) => e.i === A.me.id).lk) === '[1,2,3,4]', 'other players see the new look');
+ok(JSON.stringify(B.ents.find((e) => e.i === A.me.id).lk) === '[1,2,3,4,2,5]', 'other players see the new look');
 
 // ---------------------------------------------------------------- persistence of look + gear
 A.ws.close(); await wait(600);
 const A2 = await bot('GearAlpha', 'mage');
-ok(JSON.stringify(A2.me.look) === '[1,2,3,4]' && A2.me.eq.head && A2.me.eq.amulet && A2.me.eq.ring1, 'look and 11-slot gear persist across logins');
+ok(JSON.stringify(A2.me.look) === '[1,2,3,4,2,5]' && A2.me.eq.head && A2.me.eq.amulet && A2.me.eq.ring1, 'look and 11-slot gear persist across logins');
 
 // ---------------------------------------------------------------- migration of a v2 save
 const L = await bot('Legacy');
