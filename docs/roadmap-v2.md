@@ -10,7 +10,7 @@ Delivered in phases, each committed with tests. Nothing here is a promise of a s
 |---|---|---|
 | 1 | Progression core: main level + job levels, 5 attributes, 6 jobs x 6 skills, skill library that carries over, 3-6 slot skill bar, status effects, threat, weapon-based auto attacks, telegraphed boss attacks, character window UI | **done** (tests: `smoke-jobs.mjs`) |
 | 2 | Customization + wearables: appearance creator (skin/hair/eyes), 11 equipment slots incl. head/body/legs/boots/gloves/cape/2 rings/amulet, equipment drawn on the character, item affixes | **done** (tests: `smoke-gear.mjs`) |
-| 3 | Bigger world: 256x256 world of 4 islands, chunked rendering, 6 biomes, 3 more towns, 23 more monsters (3 bosses), 15 more quests, per-town shops, world map | **done except the second dungeon** (tests: `smoke-world.mjs`) |
+| 3 | Bigger world: 256x256 world of 4 islands, chunked rendering, 6 biomes, 3 more towns, 23 more monsters (3 bosses), 15 more quests, per-town shops, world map | **done** incl. the second dungeon, The Frozen Depths (tests: `smoke-world.mjs`, `smoke-frozen.mjs`) |
 | 4 | UX + scale: full map, quest log, settings, buff bars, tooltips, state delta-encoding / spatial index, party loot rules, deploy config | planned |
 | - | Shareable URL | needs the owner's go-ahead (see "Hosting" below) |
 

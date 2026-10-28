@@ -7,7 +7,7 @@ const NW = 128; // the original Eldermoor island occupies the north-west 128x128
 // Ground layer
 export const G = {
   GRASS: 0, FOREST: 1, SWAMP: 2, SAND: 3, WATER: 4, DEEP: 5, PATH: 6, FLOOR: 7, RUIN: 8, VOID: 9, CRYPT: 10,
-  SNOW: 11, ICE: 12, DUNE: 13, BASALT: 14, ASH: 15, LAVA: 16, BRIDGE: 17,
+  SNOW: 11, ICE: 12, DUNE: 13, BASALT: 14, ASH: 15, LAVA: 16, BRIDGE: 17, FROST: 18,
 };
 // Object layer (things standing on the ground)
 export const O = {
@@ -335,12 +335,16 @@ export function generateWorld(seed) {
  * Sunken Crypt: a snake of rooms joined by 3-wide corridors on the same 128x128 grid, so the
  * overworld renderer and pathfinding work unchanged. Deterministic from the seed.
  */
-export function generateDungeon(seed) {
+export function generateDungeon(seed, theme = 'crypt') {
   const g = new Uint8Array(W * H).fill(G.VOID);
   const o = new Uint8Array(W * H);
   const idx = (x, y) => y * W + x;
   const r = rng(seed);
-  const cells = [[0, 2], [1, 2], [2, 2], [2, 1], [1, 1], [1, 0], [2, 0], [3, 0]];
+  // the crypt is a snake of 8 rooms; the frozen depths wind through 10 (every step is to an adjacent cell)
+  const cells = theme === 'ice'
+    ? [[0, 2], [1, 2], [1, 1], [0, 1], [0, 0], [1, 0], [2, 0], [2, 1], [3, 1], [3, 0]]
+    : [[0, 2], [1, 2], [2, 2], [2, 1], [1, 1], [1, 0], [2, 0], [3, 0]];
+  const FLOOR = theme === 'ice' ? G.FROST : G.CRYPT;
   const rooms = cells.map(([cx, cy], i) => {
     const boss = i === cells.length - 1, entry = i === 0;
     const w = boss ? 22 + Math.floor(r() * 4) : entry ? 11 : 12 + Math.floor(r() * 9);
@@ -349,7 +353,7 @@ export function generateDungeon(seed) {
     const y = 16 + cy * 32 + 2 + Math.floor(r() * (28 - h));
     return { x, y, w, h, cx: x + (w >> 1), cy: y + (h >> 1), boss, entry };
   });
-  const carve = (x0, y0, w, h) => { for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) g[idx(x, y)] = G.CRYPT; };
+  const carve = (x0, y0, w, h) => { for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) g[idx(x, y)] = FLOOR; };
   for (const rm of rooms) carve(rm.x, rm.y, rm.w, rm.h);
   for (let i = 1; i < rooms.length; i++) {
     const a = rooms[i - 1], b = rooms[i];
@@ -367,10 +371,10 @@ export function generateDungeon(seed) {
     for (let x = 1; x < W - 1; x++) {
       if (g[idx(x, y)] !== G.VOID) continue;
       let near = false;
-      for (let dy = -1; dy <= 1 && !near; dy++) for (let dx = -1; dx <= 1; dx++) if (g[idx(x + dx, y + dy)] === G.CRYPT) { near = true; break; }
+      for (let dy = -1; dy <= 1 && !near; dy++) for (let dx = -1; dx <= 1; dx++) if (g[idx(x + dx, y + dy)] === FLOOR) { near = true; break; }
       if (near) o[idx(x, y)] = O.WALL;
     }
   }
   const e = rooms[0];
-  return { g, o, houses: [], dungeon: true, rooms, spawn: { x: e.cx + 1, y: e.cy }, exit: { x: e.x + 1, y: e.cy } };
+  return { g, o, houses: [], dungeon: true, theme, rooms, spawn: { x: e.cx + 1, y: e.cy }, exit: { x: e.x + 1, y: e.cy } };
 }

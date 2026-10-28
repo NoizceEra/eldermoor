@@ -1,6 +1,6 @@
 // Terrain art: procedural tiles, a baked ground layer, animated water, trees and houses.
 import { W, H, G, O, hash2 } from '/shared/world.js';
-import { Grid, mkCanvas, adj } from '/client/sprites.js';
+import { Grid, mkCanvas, adj, tintCanvas } from '/client/sprites.js';
 
 export const TS = 16;
 const pickc = (r, cols, w) => {
@@ -180,7 +180,7 @@ const treeCache = new Map();
 export function treeSprite(kind, v) {
   const k = `${kind}${v}`;
   let c = treeCache.get(k);
-  if (!c) { c = kind === 'cactus' ? cactusSprite(v) : kind === 'snowpine' ? snowPineSprite(v) : kind === 'palm' ? palmSprite(v) : kind === 'pillar' ? pillarSprite(v) : kind === O.DTREE ? deadTree(v) : kind === 'pine' ? pineTree(v) : oakTree(v); treeCache.set(k, c); }
+  if (!c) { c = kind === 'icepillar' ? tintCanvas(pillarSprite(v), ICE_WASH) : kind === 'cactus' ? cactusSprite(v) : kind === 'snowpine' ? snowPineSprite(v) : kind === 'palm' ? palmSprite(v) : kind === 'pillar' ? pillarSprite(v) : kind === O.DTREE ? deadTree(v) : kind === 'pine' ? pineTree(v) : oakTree(v); treeCache.set(k, c); }
   return c;
 }
 
@@ -315,7 +315,8 @@ const GROUND_BASE = {
 };
 const isWater = (t) => t === G.WATER || t === G.DEEP;
 const isLiquid = (t) => isWater(t) || t === G.LAVA;
-const NOBLEND = new Set([G.FLOOR, G.RUIN, G.CRYPT, G.VOID, G.BRIDGE]);
+const NOBLEND = new Set([G.FLOOR, G.RUIN, G.CRYPT, G.VOID, G.BRIDGE, G.FROST]);
+const ICE_WASH = 'rgba(120,195,255,0.5)';
 export const CHUNK = 32;
 const CHUNK_PX = CHUNK * TS;
 
@@ -336,9 +337,11 @@ export function buildWorldArt(world) {
     [G.FLOOR]: Array.from({ length: 4 }, (_, i) => floorTile(i, false)),
     [G.RUIN]: Array.from({ length: 4 }, (_, i) => floorTile(i, true)),
     [G.CRYPT]: Array.from({ length: 4 }, (_, i) => floorTile(i, 2)),
+    [G.FROST]: Array.from({ length: 4 }, (_, i) => tintCanvas(floorTile(i, 2), ICE_WASH)),
     [G.VOID]: [(() => { const g = new Grid(TS, TS); g.rect(0, 0, TS, TS, '#0a0814'); return g.canvas(); })()],
   };
-  const walls = Array.from({ length: 3 }, (_, i) => wallTile(i, !!world.dungeon));
+  const ice = world.theme === 'ice';
+  const walls = Array.from({ length: 3 }, (_, i) => (ice ? tintCanvas(wallTile(i, true), ICE_WASH) : wallTile(i, !!world.dungeon)));
   const rwalls = Array.from({ length: 6 }, (_, i) => ruinWallTile(i));
   const rocks = Array.from({ length: 4 }, (_, i) => rockTile(i));
   const irocks = Array.from({ length: 4 }, (_, i) => iceRockTile(i));
@@ -356,7 +359,7 @@ export function buildWorldArt(world) {
       const v = Math.floor(hash2(x, y, 9) * 8);
       if (o === O.TREE) trees[y].push({ x, kind: world.g[y * W + x] === G.FOREST ? 'pine' : 'oak', v });
       else if (o === O.DTREE) trees[y].push({ x, kind: O.DTREE, v });
-      else if (o === O.PILLAR) trees[y].push({ x, kind: 'pillar', v });
+      else if (o === O.PILLAR) trees[y].push({ x, kind: ice ? 'icepillar' : 'pillar', v });
       else if (o === O.CACTUS) trees[y].push({ x, kind: 'cactus', v });
       else if (o === O.SNOWPINE) trees[y].push({ x, kind: 'snowpine', v });
       else if (o === O.PALM) trees[y].push({ x, kind: 'palm', v });
@@ -433,7 +436,7 @@ export function buildWorldArt(world) {
   const mm = mkCanvas(W, H), mx = mm.getContext('2d');
   const MC = {
     [G.GRASS]: '#4c9a3a', [G.FOREST]: '#2f6b34', [G.SWAMP]: '#3d5a4a', [G.SAND]: '#dcc58a', [G.WATER]: '#2f6fb8', [G.DEEP]: '#1f4a8c', [G.PATH]: '#a0794a',
-    [G.FLOOR]: '#9a9aa8', [G.RUIN]: '#6f7b6a', [G.CRYPT]: '#4a4e66', [G.VOID]: '#0a0814', [G.SNOW]: '#eef3fa', [G.ICE]: '#a8d8ee', [G.DUNE]: '#e0b86a',
+    [G.FLOOR]: '#9a9aa8', [G.RUIN]: '#6f7b6a', [G.CRYPT]: '#4a4e66', [G.FROST]: '#5a7a9a', [G.VOID]: '#0a0814', [G.SNOW]: '#eef3fa', [G.ICE]: '#a8d8ee', [G.DUNE]: '#e0b86a',
     [G.BASALT]: '#3a3440', [G.ASH]: '#58545c', [G.LAVA]: '#e0481a', [G.BRIDGE]: '#8a5a2a',
   };
   const OC = { [O.WALL]: '#5a5a6a', [O.HOUSE]: '#5a5a6a', [O.TREE]: '#1f5a2a', [O.DTREE]: '#3a3a30', [O.RWALL]: '#555', [O.PILLAR]: '#8a8eaa', [O.CACTUS]: '#2f7a2f', [O.SNOWPINE]: '#2a6a56', [O.PALM]: '#3a8a3a', [O.ICEROCK]: '#8ab8d8', [O.BROCK]: '#2a2630' };

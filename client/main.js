@@ -10,7 +10,7 @@ const $ = (id) => document.getElementById(id);
 const worldOver = generateWorld(SEED);
 const artOver = buildWorldArt(worldOver);
 let world = worldOver, art = artOver; // swapped when the server moves us into a dungeon instance
-let zoneKind = 'world', zoneId = 'world';
+let zoneKind = 'world', zoneId = 'world', zoneTheme = 'world', zoneName = 'Eldermoor';
 const dungeonCache = new Map(); // seed -> { world, art }
 const BIG = new Set(['golem', 'bonelord', 'sandgolem', 'icegolem', 'obsidiangolem', 'sunking', 'rimefang', 'cinderwing']);
 const HUMANOID = new Set(['goblin', 'skeleton', 'ghoul', 'wraith', 'mummy', 'frostsprite', 'yeti', 'emberknight']);
@@ -152,10 +152,11 @@ function onMsg(m) {
 }
 
 function applyZone(z) {
-  zoneKind = z.kind; zoneId = z.id;
+  zoneKind = z.kind; zoneId = z.id; zoneTheme = z.theme || 'world'; zoneName = z.name || 'Eldermoor';
   if (z.kind === 'dungeon') {
-    if (!dungeonCache.has(z.seed)) { const w = generateDungeon(z.seed); dungeonCache.set(z.seed, { world: w, art: buildWorldArt(w) }); }
-    ({ world, art } = dungeonCache.get(z.seed));
+    const ck = `${z.seed}:${zoneTheme}`;
+    if (!dungeonCache.has(ck)) { const w = generateDungeon(z.seed, zoneTheme); dungeonCache.set(ck, { world: w, art: buildWorldArt(w) }); }
+    ({ world, art } = dungeonCache.get(ck));
   } else { world = worldOver; art = artOver; }
   npcs = z.npcs.map((n) => ({ ...n }));
   ents.clear(); fxs.length = 0; parts.length = 0; floaters.length = 0; goal = null;
@@ -537,7 +538,7 @@ function trackRegion() {
   const m = meEnt();
   if (!m) return;
   let label;
-  if (zoneKind === 'dungeon') label = 'The Sunken Crypt';
+  if (zoneKind === 'dungeon') label = zoneName;
   else {
     const r = regionAt(m.x, m.y);
     label = r.town ? `${r.name} (safe)` : r.sea ? 'Open sea' : `${r.name}  Lv ${r.lv}`;
@@ -1133,7 +1134,7 @@ function drawDrop(d, t) {
 
 function drawPortal(n, t) {
   const cx = Math.round(n.x * TS + 8 - camX), cy = Math.round(n.y * TS + 8 - camY);
-  const exit = n.name === 'Exit', c1 = exit ? '#8aff9a' : '#c06bff', c2 = exit ? '#3a8a5a' : '#7a3fc0';
+  const exit = n.name === 'Exit', ice = /Frozen/.test(n.name), c1 = exit ? '#8aff9a' : ice ? '#8affff' : '#c06bff', c2 = exit ? '#3a8a5a' : ice ? '#3a8ac8' : '#7a3fc0';
   shadow(cx, cy + 7, 12);
   for (let dy = -10; dy <= 10; dy++) {
     const hw = Math.round(7 * Math.sqrt(1 - (dy / 10.5) ** 2));
@@ -1208,7 +1209,7 @@ function render(t, dt) {
 
   // lighting (day/night)
   const phase = (((Date.now() + timeOff) % DAY_MS) + DAY_MS) % DAY_MS / DAY_MS;
-  const amb = zoneKind === 'dungeon' ? [92, 94, 135] : ambient(phase);
+  const amb = zoneKind === 'dungeon' ? (zoneTheme === 'ice' ? [120, 150, 200] : [92, 94, 135]) : ambient(phase);
   const dark = 1 - (amb[0] + amb[1] + amb[2]) / 765;
   if (dark > 0.02) {
     lx.globalCompositeOperation = 'source-over';

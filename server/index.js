@@ -8,7 +8,7 @@ import { WebSocketServer } from 'ws';
 import { W, G, TOWN, TOWNS, BOSS, BOSSES, CAMP, CAMPS, ISLANDS, inTown, generateWorld, generateDungeon, isSolid } from '../shared/world.js';
 import {
   SEED, TICK_MS, INV_SIZE, MOBS, QUESTS, RARITY, NPCS,
-  DUNGEON_SEED, DUNGEON_REC_LVL, PORTAL, PORTAL_ID, EXIT_ID,
+  DUNGEONS, PORTAL, PORTAL2, EXIT_ID,
 } from '../shared/data.js';
 import {
   MAIN_MAX, JOB_MAX, POINTS_PER_LEVEL, JOB_SWITCH_MS, ATTRS, ATTR_BASE, WEAPON_TYPES, JOB_ORDER, JOBS, SKILLS, EFFECTS,
@@ -42,7 +42,7 @@ function makeZone(id, kind, w) {
   return { id, kind, world: w, mobs: new Map(), drops: new Map(), occ: new Map(), npcs: [], emptyAt: 0 };
 }
 const overworld = makeZone('world', 'world', world);
-overworld.npcs = [...NPCS, PORTAL].map((n) => ({ ...n, k: 'n' }));
+overworld.npcs = [...NPCS, PORTAL, PORTAL2].map((n) => ({ ...n, k: 'n' }));
 for (const n of overworld.npcs) overworld.occ.set(key(n.x, n.y), n);
 const zones = new Map([[overworld.id, overworld]]);
 const instances = new Map(); // party/solo key -> dungeon zone
@@ -841,7 +841,7 @@ function killMob(m, killer) {
   if (def.boss && m.z.kind === 'world') sayAll(`${killer.name} has slain the ${def.name}!`, '#ff9a3a');
   if (def.boss && m.z.kind === 'dungeon') {
     for (const q of players.values()) if (q.z === m.z) log(q, `The ${def.name} falls! The crypt falls silent. Loot the room, then leave through the exit portal.`, '#ff9a3a');
-    sayAll(`${killer.name} has conquered the Sunken Crypt!`, '#ff9a3a');
+    sayAll(`${killer.name} has conquered ${m.z.def.name}!`, '#ff9a3a');
   }
 }
 
@@ -1069,7 +1069,7 @@ function castSkill(p, sk) {
 
 // ---------------------------------------------------------------- zones & dungeon instances
 const zoneMsg = (z) => ({
-  t: 'zone', id: z.id, kind: z.kind, seed: z.seed || SEED, name: z.kind === 'dungeon' ? 'The Sunken Crypt' : 'Eldermoor',
+  t: 'zone', id: z.id, kind: z.kind, seed: z.seed || SEED, theme: z.def ? z.def.theme : 'world', name: z.def ? z.def.name : 'Eldermoor',
   npcs: z.npcs.map(({ id, key: kk, name, role, x, y }) => ({ id, key: kk, name, role, x, y })),
 });
 
@@ -1082,47 +1082,49 @@ function moveToZone(p, z, x, y) {
 }
 
 function populateDungeon(z) {
+  const def = z.def;
   const fill = (rm, type) => {
     for (let tries = 0; tries < 40; tries++) {
       const x = rm.x + 1 + Math.floor(Math.random() * (rm.w - 2)), y = rm.y + 1 + Math.floor(Math.random() * (rm.h - 2));
       if (mobFree(z, x, y)) { spawnMob(z, type, x, y); return; }
     }
   };
-  const mixes = [null, ['skeleton', 'ghoul'], ['skeleton', 'ghoul'], ['ghoul', 'wraith'], ['ghoul', 'wraith'], ['wraith', 'skeleton'], ['wraith', 'ghoul']];
   z.world.rooms.forEach((rm, i) => {
     if (rm.entry) return;
     if (rm.boss) {
       const b = nearestFree(z, rm.cx, rm.cy, mobFree, 4);
-      spawnMob(z, 'bonelord', b.x, b.y);
-      for (let k = 0; k < 6; k++) fill(rm, k % 2 ? 'skeleton' : 'wraith');
+      spawnMob(z, def.boss, b.x, b.y);
+      for (let k = 0; k < 6; k++) fill(rm, def.bossAdds[k % def.bossAdds.length]);
       return;
     }
-    for (let k = 0; k < 4 + (i >> 1); k++) fill(rm, mixes[i][k % 2]);
+    const mix = def.mixes[Math.min(i, def.mixes.length - 1)];
+    for (let k = 0; k < 4 + (i >> 1); k++) fill(rm, mix[k % mix.length]);
   });
 }
 
-function makeDungeon(k) {
-  const seed = DUNGEON_SEED + (nextInstance % 7);
-  const z = makeZone(`crypt${nextInstance++}`, 'dungeon', generateDungeon(seed));
-  z.seed = seed; z.key = k;
+function makeDungeon(def, k) {
+  const seed = def.seed + (nextInstance % 7);
+  const z = makeZone(`${def.id}${nextInstance++}`, 'dungeon', generateDungeon(seed, def.theme));
+  z.seed = seed; z.def = def; z.key = `${def.id}:${k}`;
   const e = z.world.exit;
   z.npcs = [{ id: EXIT_ID, k: 'n', key: 'portal', name: 'Exit', role: 'portal', x: e.x, y: e.y }];
   for (const n of z.npcs) z.occ.set(key(n.x, n.y), n);
   populateDungeon(z);
-  zones.set(z.id, z); instances.set(k, z);
+  zones.set(z.id, z); instances.set(z.key, z);
   return z;
 }
 
-// One instance per party (or per solo hero): party members who step through later share it.
-function enterDungeon(p) {
-  if (p.dead) return;
+// One instance per dungeon and party (or solo hero): party members who step through later share it.
+function enterDungeon(p, def) {
+  if (p.dead || !def) return;
   const k = p.party ? `p${p.party}` : `u${p.id}`;
-  const z = instances.get(k) || makeDungeon(k);
+  const z = instances.get(`${def.id}:${k}`) || makeDungeon(def, k);
   z.emptyAt = 0;
   const s = nearestFree(z, z.world.spawn.x, z.world.spawn.y);
-  if (p.lvl < DUNGEON_REC_LVL) log(p, `The crypt is deadly below level ${DUNGEON_REC_LVL}. Tread carefully.`, '#ff9a3a');
+  if (p.lvl < def.rec) log(p, `${def.name} is deadly below level ${def.rec}. Tread carefully.`, '#ff9a3a');
+  p.ret = { x: def.portal.x, y: def.portal.y + 2 };
   moveToZone(p, z, s.x, s.y);
-  log(p, 'You step through the portal into the Sunken Crypt...', '#c06bff');
+  log(p, `You step through the portal into ${def.name}...`, '#c06bff');
 }
 
 function leaveDungeon(p) {
@@ -1285,7 +1287,7 @@ function checkTrades() {
 function talk(p, id) {
   const n = p.z.npcs.find((x) => x.id === id);
   if (!n || dist(p, n) > 4.5) return;
-  if (n.role === 'portal') return p.z === overworld ? enterDungeon(p) : leaveDungeon(p);
+  if (n.role === 'portal') return p.z === overworld ? enterDungeon(p, DUNGEONS.find((dg) => dg.npcId === n.id)) : leaveDungeon(p);
   if (n.role === 'lore') return send(p, { t: 'dialog', npc: n.id, name: n.name, text: n.text });
   if (n.role === 'shop') {
     return send(p, {

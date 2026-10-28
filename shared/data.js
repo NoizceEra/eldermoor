@@ -1,4 +1,4 @@
-import { TOWN, TOWNS, CAMP } from './world.js';
+import { TOWN, TOWNS, CAMP, CAMPS } from './world.js';
 
 export const SEED = 20261028;
 export const TICK_MS = 50;
@@ -168,3 +168,25 @@ QUESTS.push(
   Q('Obsidian Titans', 'obsidiangolem', 5, 17, 'Obsidian Golems guard the crater road. Five must fall.'),
   Q('Cinderwing', 'cinderwing', 1, 17, 'Cinderwing roosts in the crater. Slay the dragon and the realm is safe.', { reward: 'epic', rewardLvl: 54 }),
 );
+
+// ======================================================================= Dungeons (instanced, one per party or solo hero)
+Object.assign(MOBS, {
+  glacius: mob('Glacius, the Frozen King', 44, {
+    hp: 15, dmg: 1.5, mv: 650, at: 1800, range: 5.5, aggro: 12, leash: 22, xp: 5, respawn: 1e9,
+    extra: { boss: true, mag: true, specials: [{ kind: 'summon', type: 'frostsprite', n: 3, cd: 15000, max: 8, range: 14 }, SLAM(1200, 2.8, 2.2), { kind: 'drain', r: 5, cd: 11000, mult: 1.3 }] },
+  }),
+});
+export const PORTAL2_ID = 7;
+export const PORTAL2 = { id: PORTAL2_ID, key: 'portal', name: 'The Frozen Depths', role: 'portal', x: CAMPS[2].x, y: CAMPS[2].y };
+export const DUNGEONS = [
+  {
+    id: 'crypt', name: 'The Sunken Crypt', theme: 'crypt', seed: DUNGEON_SEED, npcId: PORTAL_ID, portal: { x: CAMP.x, y: CAMP.y }, rec: DUNGEON_REC_LVL,
+    boss: 'bonelord', bossAdds: ['wraith', 'skeleton'],
+    mixes: [null, ['skeleton', 'ghoul'], ['skeleton', 'ghoul'], ['ghoul', 'wraith'], ['ghoul', 'wraith'], ['wraith', 'skeleton'], ['wraith', 'ghoul']],
+  },
+  {
+    id: 'frozen', name: 'The Frozen Depths', theme: 'ice', seed: 4242, npcId: PORTAL2_ID, portal: { x: CAMPS[2].x, y: CAMPS[2].y }, rec: 34,
+    boss: 'glacius', bossAdds: ['frostsprite', 'icegolem'],
+    mixes: [null, ['frostslime', 'snowwolf'], ['snowwolf', 'frostsprite'], ['frostsprite', 'yeti'], ['yeti', 'snowwolf'], ['yeti', 'frostsprite'], ['icegolem', 'frostsprite'], ['icegolem', 'yeti'], ['yeti', 'icegolem'], ['icegolem', 'frostsprite']],
+  },
+];

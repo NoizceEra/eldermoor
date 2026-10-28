@@ -12,6 +12,12 @@ export const adj = (h, f) => {
   return f < 1 ? toHex([r * f, g * f, b * f]) : toHex([r + (255 - r) * (f - 1), g + (255 - g) * (f - 1), b + (255 - b) * (f - 1)]);
 };
 export const mkCanvas = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
+/** a colour wash over the opaque pixels only (icy dungeon art is the crypt art, tinted) */
+export function tintCanvas(src, rgba) {
+  const c = mkCanvas(src.width, src.height), x = c.getContext('2d');
+  x.drawImage(src, 0, 0); x.globalCompositeOperation = 'source-atop'; x.fillStyle = rgba; x.fillRect(0, 0, c.width, c.height);
+  return c;
+}
 
 export class Grid {
   constructor(w, h) { this.w = w; this.h = h; this.d = new Array(w * h).fill(null); }
@@ -471,6 +477,7 @@ const MOB_ART = {
   golem: ['golem', {}], sandgolem: ['golem', { tex: SAND_TEX, eye: '#ff4a2a', rune: '#ffd23a', moss: null }],
   icegolem: ['golem', { tex: ICE_TEX, eye: '#3aafff', rune: '#8affff', moss: null }], obsidiangolem: ['golem', { tex: OBS_TEX, eye: '#ff6a1a', rune: '#ff4a1a', moss: null }],
   scarab: ['scarab', {}], scorpion: ['scorpion', {}], sandviper: ['viper', {}], fireelem: ['elemental', {}], sunking: ['kingmummy', {}], bonelord: ['bonelord', {}],
+  glacius: ['bonelord', { tint: 'rgba(90,170,255,0.55)' }],
   rimefang: ['dragon', { body: '#7ab8e8', belly: '#d8f0ff', wing: '#4a88c8', eye: '#ffffff', horn: '#e8f4ff' }],
   cinderwing: ['dragon', { body: '#b02a1a', belly: '#ff8a2a', wing: '#6a1a1a', eye: '#ffe040', horn: '#2a1a1a' }],
 };
@@ -511,7 +518,8 @@ export function mobSprite(type, dir, fr) {
   const art = MOB_ART[type] || MOB_ART.slime;
   const flip = SIDE_MOBS.has(type) && dir === 2;
   return memo(`m${type}${f2}${flip}`, () => {
-    const c = PAINT[art[0]](f2, art[1]);
+    let c = PAINT[art[0]](f2, art[1]);
+    if (art[1] && art[1].tint) c = tintCanvas(c, art[1].tint);
     if (!flip) return c;
     const n = mkCanvas(c.width, c.height), x = n.getContext('2d');
     x.scale(-1, 1); x.drawImage(c, -c.width, 0);
