@@ -1254,7 +1254,9 @@ function debugCmd(p, m) {
   if (m.gold) p.gold += m.gold | 0;
   if (m.give) for (let i = 0; i < (m.n || 1); i++) addItem(p, m.give === 'potion' ? mkPotion(false) : mkGear(m.give === 'armor' ? 'body' : m.give === 'trinket' ? 'ring' : m.give, 10, Number.isInteger(m.r) ? m.r : 2));
   if (m.god) p.god = true;
+  if (m.hp) p.hp = Math.max(1, Math.min(p.st.mh, m.hp | 0));
   if (m.bountyDone && p.bounty) p.bounty.p = p.bounty.need;
+  if (m.bountyMob && MOBS[m.bountyMob]) p.bounty = { mob: m.bountyMob, need: 1, p: 0 };
   if (m.lvl) p.lvl = Math.max(1, Math.min(MAIN_MAX, m.lvl | 0));
   if (m.jobLvl) { p.jobs[p.job].lvl = Math.max(1, Math.min(JOB_MAX, m.jobLvl | 0)); fillBar(p); for (const id of knownOf(p)) p.knownSeen.add(id); }
   if (m.points) p.points += m.points | 0;
@@ -1666,7 +1668,8 @@ function tick() {
     if (now >= p.regenAt) {
       p.regenAt = now + 1000;
       const calm = now - p.lastHit > 5000;
-      const rate = calm ? (safeAt(p.z, p.x, p.y) ? 0.08 : 0.02) : (JOBS[p.job].regen || 0);
+      const resting = calm && p.emote && p.emote.k === 'sit'; // sitting still recovers faster, in town or out
+      const rate = calm ? (safeAt(p.z, p.x, p.y) ? (resting ? 0.14 : 0.08) : (resting ? 0.05 : 0.02)) : (JOBS[p.job].regen || 0);
       if (rate && p.hp < p.st.mh) { p.hp = Math.min(p.st.mh, p.hp + Math.max(1, Math.round(p.st.mh * rate))); p.dirty = true; }
     }
   }
