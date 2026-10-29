@@ -3,8 +3,8 @@
 // the player may display under their name.
 import { JOB_ORDER } from './jobs.js';
 
-export const STAT_KEYS = ['kills', 'bosses', 'quests', 'deaths', 'dungeons'];
-export const newStats = () => ({ kills: 0, bosses: 0, quests: 0, deaths: 0, dungeons: 0 });
+export const STAT_KEYS = ['kills', 'bosses', 'quests', 'deaths', 'dungeons', 'bounties'];
+export const newStats = () => ({ kills: 0, bosses: 0, quests: 0, deaths: 0, dungeons: 0, bounties: 0 });
 
 const jobsTried = (p) => JOB_ORDER.filter((j) => p.jobs[j] && p.jobs[j].lvl >= 1).length;
 const jobMaxed = (p) => JOB_ORDER.some((j) => p.jobs[j] && p.jobs[j].lvl >= 20);
@@ -24,6 +24,7 @@ export const DEEDS = [
   { id: 'versatile', name: 'Versatile', desc: 'Train 3 different jobs.', need: 3, have: jobsTried, title: 'the Versatile' },
   { id: 'master', name: 'Job Master', desc: 'Take any job to level 20.', need: 1, have: (p) => (jobMaxed(p) ? 1 : 0), title: 'the Master' },
   { id: 'all_jobs', name: 'Jack of All Trades', desc: 'Train every job.', need: JOB_ORDER.length, have: jobsTried, title: 'Jack of All Trades' },
+  { id: 'bounty', name: 'Bounty Hunter', desc: 'Claim 10 bounties.', need: 10, have: (p) => p.stats.bounties, title: 'the Bounty Hunter' },
   { id: 'fallen', name: 'Down but Not Out', desc: 'Fall in battle 10 times.', need: 10, have: (p) => p.stats.deaths, title: 'the Unyielding' },
 ];
 export const DEED_BY_ID = Object.fromEntries(DEEDS.map((d) => [d.id, d]));

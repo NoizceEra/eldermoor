@@ -564,6 +564,7 @@ function sendChat(v) {
   const arg = (cmd) => v.slice(cmd.length).trim();
   if (v.startsWith('/invite ')) tx({ t: 'pinvite', name: arg('/invite') });
   else if (v === '/leave') tx({ t: 'pleave' });
+  else if (/^\/bounty( |$)/.test(v)) tx({ t: 'bounty', a: arg('/bounty') || 'take' });
   else if (/^\/(w|whisper|tell) /.test(v)) {
     const rest = v.slice(v.indexOf(' ') + 1).trim(), sp = rest.indexOf(' ');
     if (sp < 1) addLine('<span style="color:#ff8a8a">Usage: /w NAME message</span>');
@@ -578,7 +579,7 @@ function sendChat(v) {
     if (t) tx({ t: 'pkick', id: t.id }); else addLine('<span style="color:#ff8a8a">Nobody in your party has that name.</span>');
   } else if (v.startsWith('/p ')) tx({ t: 'chat', m: arg('/p'), ch: 'party' });
   else if (['/wave', '/dance', '/sit', '/cheer'].includes(v)) tx({ t: 'emote', e: v.slice(1) });
-  else if (v === '/help') addLine('<span style="color:#9fd0ff">/invite NAME, /leave, /kick NAME, /p TEXT (party chat), /w NAME TEXT (whisper), /r TEXT (reply), /trade NAME, /who, /wave /dance /sit /cheer</span>');
+  else if (v === '/help') addLine('<span style="color:#9fd0ff">/invite NAME, /leave, /kick NAME, /p TEXT (party chat), /bounty [claim|drop], /w NAME TEXT (whisper), /r TEXT (reply), /trade NAME, /who, /wave /dance /sit /cheer</span>');
   else tx({ t: 'chat', m: v });
 }
 function answerInvite(ok) {
@@ -1063,12 +1064,14 @@ function skillsTab(body) {
 
 function renderQuest() {
   const q = me.quest, el = $('quest');
-  if (q.i >= QUESTS.length) { el.innerHTML = '<b>All quests complete</b>'; return; }
+  const bt = me.bounty ? `<br><b>Bounty</b> ${esc(MOBS[me.bounty.mob].name)}: ${me.bounty.p}/${me.bounty.need}${me.bounty.p >= me.bounty.need ? ' - /bounty claim' : ''}` : '';
+  if (q.i >= QUESTS.length) { el.innerHTML = `<b>All quests complete</b><br>Type /bounty for a contract${bt}`; return; }
   const Q = QUESTS[q.i];
   const gname = esc((NPCS.find((n) => n.id === Q.giver) || { name: 'the quest giver' }).name);
   if (q.s === 0) el.innerHTML = `<b>!</b> ${esc(Q.title)}<br>Talk to ${gname}`;
   else if (q.s === 1) el.innerHTML = `<b>${esc(Q.title)}</b><br>Slay ${esc(MOBS[Q.mob].name)}: ${q.p}/${Q.need}`;
   else el.innerHTML = `<b>?</b> ${esc(Q.title)}<br>Return to ${gname}`;
+  el.innerHTML += bt;
 }
 
 /** the hero's worn tokens with `it` swapped in, so a buyer can see exactly how it would look */

@@ -221,7 +221,7 @@ function savePlayer(p) {
   const k = p.name.toLowerCase();
   saves[k] = {
     v: 3, look: p.look, name: p.name, salt: p.salt, hash: p.hash, job: p.job, jobs: p.jobs, attr: p.attr, points: p.points, bar: p.bar, lvl: p.lvl, xp: p.xp, gold: p.gold,
-    inv: p.inv, eq: p.eq, quest: p.quest, stats: p.stats, deeds: p.deeds, title: p.title, x: (p.z && p.z.kind !== 'world' ? p.ret : p).x, y: (p.z && p.z.kind !== 'world' ? p.ret : p).y, hp: p.hp,
+    inv: p.inv, eq: p.eq, quest: p.quest, stats: p.stats, deeds: p.deeds, title: p.title, bounty: p.bounty, x: (p.z && p.z.kind !== 'world' ? p.ret : p).x, y: (p.z && p.z.kind !== 'world' ? p.ret : p).y, hp: p.hp,
   };
   store.put(k, saves[k]);
 }
@@ -256,6 +256,7 @@ function migrate(save) {
   }
   o.stats = validStats(o.stats); o.deeds = validDeeds(o.deeds);
   o.title = o.deeds[o.title] ? o.title : '';
+  o.bounty = validBounty(o.bounty);
   o.look = validLook(o.look) || defaultLook(o.name); // pads looks saved before eye shapes and face marks existed
   // jobs added after a hero was saved start at level 0 (locked until first chosen)
   o.jobs = { ...(o.jobs || {}) };
@@ -315,7 +316,7 @@ const power = (p, scale) => combatPower(p.st, p.lvl, scale);
 const meMsg = (p) => ({
   t: 'me', id: p.id, name: p.name, look: p.look, job: p.job, jobs: p.jobs, attr: p.attr, points: p.points, bar: p.bar, slots: barSlots(p.lvl),
   lvl: p.lvl, xp: p.xp, xpn: p.lvl >= MAIN_MAX ? 0 : mainXpNeeded(p.lvl), jxpn: p.jobs[p.job].lvl >= JOB_MAX ? 0 : jobXpNeeded(p.jobs[p.job].lvl),
-  hp: p.hp, mh: p.st.mh, gold: p.gold, inv: p.inv, eq: p.eq, quest: p.quest, stats: p.stats, deeds: p.deeds, title: p.title,
+  hp: p.hp, mh: p.st.mh, gold: p.gold, inv: p.inv, eq: p.eq, quest: p.quest, stats: p.stats, deeds: p.deeds, title: p.title, bounty: p.bounty,
   st: {
     A: p.st.A, atk: Math.round(power(p, p.st.wt.scale)), def: Math.round(p.st.def), mres: Math.round(p.st.mres), crit: Math.round(p.st.crit * 10) / 10,
     critDmg: Math.round(p.st.critDmg * 100), dodge: Math.round(p.st.dodge * 10) / 10, haste: Math.round(p.st.haste * 100), range: p.st.range,
@@ -349,7 +350,7 @@ async function login(ws, m) {
     inv[0] = { ...mkPotion(false), c: 3 };
     p = {
       ...newProgress(job), v: 3, look: validLook(m.look) || defaultLook(name), name, salt, hash: await hashSecret(pass, salt), lvl: 1, xp: 0, gold: 20, inv,
-      eq: starterKit(job), quest: { i: 0, s: 0, p: 0 }, stats: newStats(), deeds: {}, title: '',
+      eq: starterKit(job), quest: { i: 0, s: 0, p: 0 }, stats: newStats(), deeds: {}, title: '', bounty: null,
       x: 0, y: 0, hp: 1, buffs: {}, cd: {}, fx: {},
     };
   }
@@ -502,6 +503,40 @@ function fillBar(p) {
   }
 }
 
+// Bounties: repeatable kill contracts for after (or between) the quest chain. Rolled server-side from world monsters near
+// the hero's level; the reward is paid on top of the normal kill XP. Claimable anywhere once the count is met.
+const BOUNTY_MOBS = Object.keys(MOBS).filter((id) => !MOBS[id].boss && MOBS[id].respawn < 1e8);
+function validBounty(b) {
+  if (!b || typeof b !== 'object' || !BOUNTY_MOBS.includes(b.mob)) return null;
+  const need = Math.max(1, Math.min(40, b.need | 0)), got = Math.max(0, Math.min(need, b.p | 0));
+  return { mob: b.mob, need, p: got };
+}
+function rollBounty(p) {
+  const near = BOUNTY_MOBS.filter((id) => Math.abs(MOBS[id].lvl - p.lvl) <= 5);
+  const pool = near.length ? near : [BOUNTY_MOBS.reduce((a, b) => (Math.abs(MOBS[b].lvl - p.lvl) < Math.abs(MOBS[a].lvl - p.lvl) ? b : a))];
+  const mob = pool[ri(0, pool.length - 1)];
+  return { mob, need: ri(8, 14), p: 0 };
+}
+const bountyReward = (b) => ({ xp: Math.round(b.need * MOBS[b.mob].xp * 0.8), gold: Math.round(b.need * MOBS[b.mob].gold[1] * 2) });
+function bountyAction(p, a) {
+  if (a === 'take') {
+    if (p.bounty) return log(p, 'You already have a bounty. Finish it, claim it, or drop it first.', '#ff8a8a');
+    p.bounty = rollBounty(p);
+    log(p, `Bounty posted: slay ${p.bounty.need} ${MOBS[p.bounty.mob].name}s.`, '#ffe066');
+  } else if (a === 'drop') {
+    if (!p.bounty) return;
+    p.bounty = null; log(p, 'Bounty dropped.', '#9fd0ff');
+  } else if (a === 'claim') {
+    const b = p.bounty;
+    if (!b) return log(p, 'You have no bounty. Type /bounty to take one.', '#ff8a8a');
+    if (b.p < b.need) return log(p, `Not finished yet: ${b.p}/${b.need}.`, '#ff8a8a');
+    const r = bountyReward(b);
+    p.gold += r.gold; p.bounty = null; p.stats.bounties++;
+    giveXp(p, r.xp);
+    log(p, `Bounty claimed! +${r.xp} XP, +${r.gold} gold.`, '#ffe066');
+  } else return;
+  p.dirty = true;
+}
 // Deeds are re-derived from counters whenever one could have changed, so a deed can never be missed or double-granted.
 function checkDeeds(p) {
   for (const d of newDeeds(p)) {
@@ -872,6 +907,10 @@ function killMob(m, killer) {
     giveXp(p, def.xp * factor * (m.lvl / def.lvl) * share);
     p.stats.kills++;
     if (def.boss) { p.stats.bosses++; if (m.z.kind === 'dungeon') p.stats.dungeons++; }
+    if (p.bounty && p.bounty.mob === m.type && p.bounty.p < p.bounty.need) {
+      p.bounty.p++;
+      log(p, p.bounty.p >= p.bounty.need ? 'Bounty complete! Type /bounty claim.' : `Bounty: ${p.bounty.p}/${p.bounty.need} ${def.name}`, '#ffe066');
+    }
     checkDeeds(p);
     const q = p.quest;
     if (q.s === 1 && QUESTS[q.i].mob === m.type) {
@@ -1215,6 +1254,7 @@ function debugCmd(p, m) {
   if (m.gold) p.gold += m.gold | 0;
   if (m.give) for (let i = 0; i < (m.n || 1); i++) addItem(p, m.give === 'potion' ? mkPotion(false) : mkGear(m.give === 'armor' ? 'body' : m.give === 'trinket' ? 'ring' : m.give, 10, Number.isInteger(m.r) ? m.r : 2));
   if (m.god) p.god = true;
+  if (m.bountyDone && p.bounty) p.bounty.p = p.bounty.need;
   if (m.lvl) p.lvl = Math.max(1, Math.min(MAIN_MAX, m.lvl | 0));
   if (m.jobLvl) { p.jobs[p.job].lvl = Math.max(1, Math.min(JOB_MAX, m.jobLvl | 0)); fillBar(p); for (const id of knownOf(p)) p.knownSeen.add(id); }
   if (m.points) p.points += m.points | 0;
@@ -1425,6 +1465,7 @@ function onMessage(ws, raw) {
       break;
     }
     case 'job': switchJob(p, String(m.id), now); checkDeeds(p); break;
+    case 'bounty': bountyAction(p, String(m.a)); break;
     case 'title': {
       const id = String(m.id || '');
       if (id && !(Object.hasOwn(DEED_BY_ID, id) && p.deeds[id])) return;
