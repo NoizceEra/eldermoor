@@ -8,7 +8,7 @@
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
     "balance": "node scripts/balance-sim.mjs",
-    "test": "node scripts/test-security.mjs && node scripts/smoke-security.mjs && node scripts/test-input.mjs && node scripts/test-ui.mjs && node scripts/test-store.mjs && node scripts/smoke-scale.mjs && node scripts/smoke-world.mjs && node scripts/smoke-jobs.mjs && node scripts/smoke-gear.mjs && node scripts/smoke.mjs && node scripts/smoke-party.mjs && node scripts/smoke-dungeon.mjs && node scripts/smoke-frozen.mjs && node scripts/smoke-ember.mjs && node scripts/smoke-trade.mjs && node scripts/smoke-emote.mjs && node scripts/smoke-persist.mjs && node scripts/test-balance.mjs"
+    "test": "node scripts/test-security.mjs && node scripts/smoke-security.mjs && node scripts/test-input.mjs && node scripts/test-ui.mjs && node scripts/test-store.mjs && node scripts/smoke-scale.mjs && node scripts/smoke-world.mjs && node scripts/smoke-jobs.mjs && node scripts/smoke-gear.mjs && node scripts/smoke.mjs && node scripts/smoke-party.mjs && node scripts/smoke-dungeon.mjs && node scripts/smoke-frozen.mjs && node scripts/smoke-ember.mjs && node scripts/smoke-trade.mjs && node scripts/smoke-emote.mjs && node scripts/smoke-deeds.mjs && node scripts/smoke-persist.mjs && node scripts/test-balance.mjs"
   },
   "dependencies": {
     "pg": "^8.23.1",

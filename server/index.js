@@ -19,6 +19,7 @@ import {
 import {
   EQ_KEYS, KINDS, PALETTES, STARTER_KIT, emptyEq, eqKeyFor, defaultLook, validLook, kindName, visTokens, LOOK_COST,
 } from '../shared/gear.js';
+import { newStats, validStats, validDeeds, newDeeds, DEED_BY_ID } from '../shared/deeds.js';
 import { GCD_MS, deriveStats, power as combatPower, mitigation } from '../shared/combat.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -220,7 +221,7 @@ function savePlayer(p) {
   const k = p.name.toLowerCase();
   saves[k] = {
     v: 3, look: p.look, name: p.name, salt: p.salt, hash: p.hash, job: p.job, jobs: p.jobs, attr: p.attr, points: p.points, bar: p.bar, lvl: p.lvl, xp: p.xp, gold: p.gold,
-    inv: p.inv, eq: p.eq, quest: p.quest, x: (p.z && p.z.kind !== 'world' ? p.ret : p).x, y: (p.z && p.z.kind !== 'world' ? p.ret : p).y, hp: p.hp,
+    inv: p.inv, eq: p.eq, quest: p.quest, stats: p.stats, deeds: p.deeds, title: p.title, x: (p.z && p.z.kind !== 'world' ? p.ret : p).x, y: (p.z && p.z.kind !== 'world' ? p.ret : p).y, hp: p.hp,
   };
   store.put(k, saves[k]);
 }
@@ -253,6 +254,8 @@ function migrate(save) {
     o.inv = (o.inv || []).map(migrateItem);
     o.v = 3;
   }
+  o.stats = validStats(o.stats); o.deeds = validDeeds(o.deeds);
+  o.title = o.deeds[o.title] ? o.title : '';
   o.look = validLook(o.look) || defaultLook(o.name); // pads looks saved before eye shapes and face marks existed
   // jobs added after a hero was saved start at level 0 (locked until first chosen)
   o.jobs = { ...(o.jobs || {}) };
@@ -312,7 +315,7 @@ const power = (p, scale) => combatPower(p.st, p.lvl, scale);
 const meMsg = (p) => ({
   t: 'me', id: p.id, name: p.name, look: p.look, job: p.job, jobs: p.jobs, attr: p.attr, points: p.points, bar: p.bar, slots: barSlots(p.lvl),
   lvl: p.lvl, xp: p.xp, xpn: p.lvl >= MAIN_MAX ? 0 : mainXpNeeded(p.lvl), jxpn: p.jobs[p.job].lvl >= JOB_MAX ? 0 : jobXpNeeded(p.jobs[p.job].lvl),
-  hp: p.hp, mh: p.st.mh, gold: p.gold, inv: p.inv, eq: p.eq, quest: p.quest,
+  hp: p.hp, mh: p.st.mh, gold: p.gold, inv: p.inv, eq: p.eq, quest: p.quest, stats: p.stats, deeds: p.deeds, title: p.title,
   st: {
     A: p.st.A, atk: Math.round(power(p, p.st.wt.scale)), def: Math.round(p.st.def), mres: Math.round(p.st.mres), crit: Math.round(p.st.crit * 10) / 10,
     critDmg: Math.round(p.st.critDmg * 100), dodge: Math.round(p.st.dodge * 10) / 10, haste: Math.round(p.st.haste * 100), range: p.st.range,
@@ -346,7 +349,7 @@ async function login(ws, m) {
     inv[0] = { ...mkPotion(false), c: 3 };
     p = {
       ...newProgress(job), v: 3, look: validLook(m.look) || defaultLook(name), name, salt, hash: await hashSecret(pass, salt), lvl: 1, xp: 0, gold: 20, inv,
-      eq: starterKit(job), quest: { i: 0, s: 0, p: 0 },
+      eq: starterKit(job), quest: { i: 0, s: 0, p: 0 }, stats: newStats(), deeds: {}, title: '',
       x: 0, y: 0, hp: 1, buffs: {}, cd: {}, fx: {},
     };
   }
@@ -499,6 +502,14 @@ function fillBar(p) {
   }
 }
 
+// Deeds are re-derived from counters whenever one could have changed, so a deed can never be missed or double-granted.
+function checkDeeds(p) {
+  for (const d of newDeeds(p)) {
+    p.deeds[d.id] = 1; p.dirty = true;
+    log(p, `Deed earned: ${d.name}! Title unlocked: ${d.title}.`, '#ffd23a');
+    emit(p.z, p.x, p.y, { e: 'fx', k: 'levelup', x: p.x, y: p.y, id: p.id });
+  }
+}
 function giveXp(p, amount, jobAmount = amount * 0.8) {
   const J = p.jobs[p.job];
   let leveled = false;
@@ -522,6 +533,7 @@ function giveXp(p, amount, jobAmount = amount * 0.8) {
   }
   if (leveled) computeStats(p);
   fillBar(p);
+  checkDeeds(p);
   for (const id of knownOf(p)) if (!p.knownSeen.has(id)) { p.knownSeen.add(id); log(p, `Learned skill: ${SKILLS[id].name}!`, '#8be88b'); }
   p.dirty = true;
 }
@@ -637,6 +649,7 @@ function hurtPlayer(p, raw, from, o = {}) {
     { const tr = tradeOf(p); if (tr) endTrade(tr, `${p.name} died`); }
     emit(p.z, p.x, p.y, { e: 'fx', k: 'die', x: p.x, y: p.y, id: p.id });
     log(p, `You were slain by ${from}. Returning to town...`, '#ff6a6a');
+    p.stats.deaths++; checkDeeds(p);
   }
 }
 
@@ -857,6 +870,9 @@ function killMob(m, killer) {
     const p = players.get(pid);
     const factor = Math.min(1.5, Math.max(0.2, 1 + (m.lvl - p.lvl) * 0.1));
     giveXp(p, def.xp * factor * (m.lvl / def.lvl) * share);
+    p.stats.kills++;
+    if (def.boss) { p.stats.bosses++; if (m.z.kind === 'dungeon') p.stats.dungeons++; }
+    checkDeeds(p);
     const q = p.quest;
     if (q.s === 1 && QUESTS[q.i].mob === m.type) {
       q.p++;
@@ -1207,6 +1223,7 @@ function debugCmd(p, m) {
   computeStats(p);
   fillBar(p);
   if (m.god || m.lvl) p.hp = p.st.mh;
+  checkDeeds(p);
   p.dirty = true;
 }
 
@@ -1407,7 +1424,23 @@ function onMessage(ws, raw) {
       log(p, 'Your attributes have been reset.', '#c06bff');
       break;
     }
-    case 'job': switchJob(p, String(m.id), now); break;
+    case 'job': switchJob(p, String(m.id), now); checkDeeds(p); break;
+    case 'title': {
+      const id = String(m.id || '');
+      if (id && !(Object.hasOwn(DEED_BY_ID, id) && p.deeds[id])) return;
+      p.title = id; p.dirty = true;
+      break;
+    }
+    case 'whisper': {
+      const text = String(m.m || '').replace(/[\u0000-\u001f]/g, '').trim().slice(0, 120);
+      if (!text || now - p.chatAt < 600) return;
+      const to = [...players.values()].find((x) => x.name.toLowerCase() === String(m.to || '').trim().toLowerCase());
+      if (!to || to === p) return log(p, to ? 'You cannot whisper yourself.' : 'Nobody by that name is online.', '#ff8a8a');
+      p.chatAt = now;
+      send(to, { t: 'chat', n: p.name, m: text, id: p.id, ch: 'w', dir: 'from' });
+      send(p, { t: 'chat', n: to.name, m: text, id: p.id, ch: 'w', dir: 'to' });
+      break;
+    }
     case 'bar': setBar(p, m.slot | 0, m.skill); break;
     case 'chat': {
       let text = String(m.m || '').replace(/[\u0000-\u001f]/g, '').trim().slice(0, 120);
@@ -1449,6 +1482,7 @@ function onMessage(ws, raw) {
       if (Q.reward) addItem(p, mkGear(rollSlot(), Q.rewardLvl || 20, 3));
       log(p, `Quest complete! +${Q.xp} XP, +${Q.gold} gold.`, '#ffe066');
       q.i++; q.s = 0; q.p = 0; p.dirty = true;
+      p.stats.quests++; checkDeeds(p);
       break;
     }
     case 'buy': {
@@ -1534,7 +1568,7 @@ let tickN = 0, tickMs = 0, awakeMobs = 0;
 const VX = 32, VY = 20;
 const EMOTES = { wave: 3000, dance: 6000, cheer: 2500, sit: 0 }; // ms shown; sit lasts until you move
 const emoteOf = (p) => (p.emote && (p.emote.until === 0 || p.emote.until > Date.now()) ? p.emote.k : 0);
-const playerEnt = (o) => ({ em: emoteOf(o), i: o.id, k: 'p', x: o.x, y: o.y, f: o.f, h: o.hp, mh: o.st.mh, n: o.name, l: o.lvl, c: o.job, lk: o.look, vs: visTokens(o.eq), fx: fxIds(o), d: o.dead ? 1 : 0, sp: o.st.moveMul > 1.2 ? 1 : 0 });
+const playerEnt = (o) => ({ ti: o.title || '', em: emoteOf(o), i: o.id, k: 'p', x: o.x, y: o.y, f: o.f, h: o.hp, mh: o.st.mh, n: o.name, l: o.lvl, c: o.job, lk: o.look, vs: visTokens(o.eq), fx: fxIds(o), d: o.dead ? 1 : 0, sp: o.st.moveMul > 1.2 ? 1 : 0 });
 const mobEnt = (m, now) => ({ i: m.id, k: 'm', s: m.type, x: m.x, y: m.y, f: m.f, h: m.hp, mh: m.mh, l: m.lvl, st: m.stunUntil > now ? 1 : 0, fx: fxIds(m) });
 const dropEnt = (d) => ({ i: d.id, k: 'd', x: d.x, y: d.y, g: d.gold ? 1 : 0, b: d.item ? d.item.b : '', r: d.item ? d.item.r : 0, cl: d.item ? d.item.cl || '' : '', n: d.item ? d.item.n : `${d.gold} gold` });
 

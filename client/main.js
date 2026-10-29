@@ -6,6 +6,7 @@ import { EQ_KEYS, EQ_LABEL, LOOK_LIMITS, LOOK_LABELS, LOOK_COST, SKIN_TONES, HAI
 import * as SP from '/client/sprites.js';
 import * as HERO from '/client/hero32.js';
 import { TS, CHUNK, buildWorldArt, drawWaterTile, drawLavaTile, treeSprite } from '/client/gfx.js';
+import { DEEDS, titleText } from '/shared/deeds.js';
 import { GAMEPAD_HELP, moveFocusIndex, readGamepad } from '/client/input.js';
 
 const $ = (id) => document.getElementById(id);
@@ -205,6 +206,12 @@ function onMsg(m) {
       showInvite(); sfx.click();
       break;
     case 'chat': {
+      if (m.ch === 'w') {
+        if (m.dir === 'from') lastWhisper = m.n;
+        addLine(`<span style="color:#e08aff">${m.dir === 'to' ? 'To' : 'From'} ${esc(m.n)}</span>: <span style="color:#f0c8ff">${esc(m.m)}</span>`);
+        if (m.dir === 'from') sfx.click();
+        break;
+      }
       if (m.ch === 'party') addLine(`<span style="color:#6ab8ff">[Party] ${esc(m.n)}</span>: ${esc(m.m)}`);
       else addLine(`<span style="color:${m.id === myId ? '#8be88b' : '#9fd0ff'}">${esc(m.n)}</span>: ${esc(m.m)}`);
       const e = ents.get(m.id); if (e) { e.say = m.m; e.sayAt = now(); }
@@ -552,17 +559,26 @@ addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
 addEventListener('blur', () => keys.clear());
 
 // ---- party
+let lastWhisper = '';
 function sendChat(v) {
   const arg = (cmd) => v.slice(cmd.length).trim();
   if (v.startsWith('/invite ')) tx({ t: 'pinvite', name: arg('/invite') });
   else if (v === '/leave') tx({ t: 'pleave' });
+  else if (/^\/(w|whisper|tell) /.test(v)) {
+    const rest = v.slice(v.indexOf(' ') + 1).trim(), sp = rest.indexOf(' ');
+    if (sp < 1) addLine('<span style="color:#ff8a8a">Usage: /w NAME message</span>');
+    else tx({ t: 'whisper', to: rest.slice(0, sp), m: rest.slice(sp + 1) });
+  } else if (/^\/r /.test(v)) {
+    if (!lastWhisper) addLine('<span style="color:#ff8a8a">Nobody has whispered you yet.</span>');
+    else tx({ t: 'whisper', to: lastWhisper, m: v.slice(3) });
+  }
   else if (v.startsWith('/trade ')) tx({ t: 'trade_req', name: arg('/trade') });
   else if (v.startsWith('/kick ')) {
     const t = party.members.find((m) => m.name.toLowerCase() === arg('/kick').toLowerCase());
     if (t) tx({ t: 'pkick', id: t.id }); else addLine('<span style="color:#ff8a8a">Nobody in your party has that name.</span>');
   } else if (v.startsWith('/p ')) tx({ t: 'chat', m: arg('/p'), ch: 'party' });
   else if (['/wave', '/dance', '/sit', '/cheer'].includes(v)) tx({ t: 'emote', e: v.slice(1) });
-  else if (v === '/help') addLine('<span style="color:#9fd0ff">/invite NAME, /leave, /kick NAME, /p TEXT (party chat), /trade NAME, /who, /wave /dance /sit /cheer</span>');
+  else if (v === '/help') addLine('<span style="color:#9fd0ff">/invite NAME, /leave, /kick NAME, /p TEXT (party chat), /w NAME TEXT (whisper), /r TEXT (reply), /trade NAME, /who, /wave /dance /sit /cheer</span>');
   else tx({ t: 'chat', m: v });
 }
 function answerInvite(ok) {
@@ -944,13 +960,27 @@ function renderChar() {
   const head = mkEl('div', 'row', `<b>${esc(me.name)}</b><span class="small">Lv ${me.lvl} &middot; ${JOBS[me.job].name} ${me.jobs[me.job].lvl}</span>`);
   const x = mkEl('button', 'x', 'x'); x.onclick = () => box.classList.add('hidden'); head.appendChild(x);
   const tabs = mkEl('div', 'tabs');
-  for (const [id, label] of [['stats', 'Stats'], ['jobs', 'Jobs'], ['skills', 'Skills'], ['look', 'Look']]) {
+  for (const [id, label] of [['stats', 'Stats'], ['jobs', 'Jobs'], ['skills', 'Skills'], ['deeds', 'Deeds'], ['look', 'Look']]) {
     const b = mkEl('button', charTab === id ? 'on' : '', label); b.onclick = () => { charTab = id; renderChar(); }; tabs.appendChild(b);
   }
   const body = mkEl('div', 'cbody');
   box.append(head, tabs, body);
-  (charTab === 'stats' ? statsTab : charTab === 'jobs' ? jobsTab : charTab === 'look' ? lookTab : skillsTab)(body);
+  (charTab === 'stats' ? statsTab : charTab === 'jobs' ? jobsTab : charTab === 'look' ? lookTab : charTab === 'deeds' ? deedsTab : skillsTab)(body);
   body.scrollTop = keepScroll;
+}
+function deedsTab(body) {
+  const done = DEEDS.filter((d) => me.deeds[d.id]).length;
+  body.appendChild(mkEl('div', 'small', `${done}/${DEEDS.length} deeds earned. Click an earned deed to wear its title.`));
+  const cur = mkEl('div', 'qrow cur', `<b>Title:</b> ${me.title ? esc(titleText(me.title)) : 'none'}`);
+  if (me.title) { const b = mkEl('button', '', 'Remove'); b.onclick = () => tx({ t: 'title', id: '' }); cur.appendChild(b); }
+  body.appendChild(cur);
+  for (const d of DEEDS) {
+    const got = !!me.deeds[d.id], have = Math.min(d.need, d.have(me));
+    const row = mkEl('div', `qrow ${got ? (me.title === d.id ? 'cur' : 'done') : 'lock'}`, `<b>${esc(d.name)}</b> &middot; ${got ? 'earned' : `${have}/${d.need}`}<div class="ds">${esc(d.desc)} Title: ${esc(d.title)}</div>`);
+    row.style.opacity = got ? 1 : 0.75;
+    if (got) { row.style.cursor = 'pointer'; row.onclick = () => tx({ t: 'title', id: d.id }); }
+    body.appendChild(row);
+  }
 }
 let lookDraft = null;
 function lookTab(body) {
@@ -1284,6 +1314,7 @@ function drawEntity(o, t, tgId) {
   const name = o.k === 'p' ? o.n : mobDef(o).name;
   const col = o.k === 'p' ? (o.i === myId ? '#8be88b' : inParty(o.i) ? '#6ab8ff' : '#ffffff') : levelColor(o.l);
   if (o.k !== 'm' || settings.names || o.i === tgId || mobDef(o).boss) labels.push({ x: cx, y: pyT - (o.k === 'm' && (o.h < o.mh || o.i === tgId) ? 5 : 2), txt: o.k === 'p' ? name : `${name}  ${o.l}`, col, boss: !!mobDef(o).boss });
+  if (o.k === 'p' && o.ti && !(o.fx && o.fx.length)) labels.push({ x: cx, y: pyT - 10, txt: titleText(o.ti), col: '#ffd23a' });
   if (o.say && t - o.sayAt < 5000) labels.push({ x: cx, y: pyT - 14, txt: o.say, col: '#ffffff', bubble: true });
 }
 
