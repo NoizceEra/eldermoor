@@ -35,7 +35,11 @@ Open the URL in several tabs to play together. Heroes persist in `data/saves.jso
 | `/trade NAME` | start a trade |
 | M | mute |
 
+**Gamepad:** left stick / D-pad moves; A/Cross interacts; X/Square targets; Y/Triangle uses a potion; LB/RB/LT/RT/L3/R3 trigger skills 1-6; View opens the map; Menu opens settings. D-pad and A/Cross also navigate every open menu.
+
 **Phones / tablets:** touch mode switches on automatically - on-screen joystick, tap to move/attack/talk/loot, big skill buttons, CHAT / TARGET / TALK / PACK buttons, full-width pack and dialog sheets.
+
+The Menu also includes interface scaling, high contrast, reduced-motion support, gamepad deadzone, and a replayable first-session guide. Browser zoom remains available.
 
 ## What's in it
 
@@ -48,11 +52,12 @@ Open the URL in several tabs to play together. Heroes persist in `data/saves.jso
 - **Combat v2**: crits, dodge, physical vs magic defense, status effects (stun, slow, burn, poison, bleed, vulnerable, haste, shields, regen, fear...), threat tables so tanks can hold monsters, global cooldown, telegraphed boss attacks (watch for the red circles).
 - **Customization**: a character creator (skin, hair style and colour, eyes) with a live preview. Change your look later in the town square from the Look tab (50g).
 - **Wearables**: 11 equipment slots (weapon, offhand, head, body, legs, boots, gloves, cape, two rings, amulet), 40+ item kinds, and every worn piece is drawn on your character. Rarer gear rolls attribute affixes ("of Might", "of Insight"...), crit and dodge. Each job starts in its own outfit.
-- Shop, 5-step quest chain, global chat, day/night with torchlight.
+- Regional shops, a 29-step quest journey, global chat, day/night with torchlight, ambient music and social emotes.
 - Parties of up to 4: shared XP (with a group bonus) and quest credit for everyone in range, party frames, minimap dots, party chat.
 - **Player trading**: both sides offer up to 6 items + gold, both lock, both confirm. Any change unlocks everyone; the swap re-validates ownership, gold, range and pack space on the server, and cancels cleanly on disconnect, death, zone change or distance. Pack changes are frozen mid-trade.
 - **Built to scale on a small server**: monsters live in a spatial grid, monsters far from every player sleep (an idle world costs about 0.1 ms per tick), and the browser client receives only the entities that changed (about 4% of the bandwidth of full snapshots in a busy meadow). Fresh loot is reserved for the heroes and parties who fought for it for 8 seconds (15 for bosses).
 - Server-authoritative: movement, combat, loot and economy all validated server-side.
+- **Durable and hardened hosting path**: file saves locally or batched Postgres saves when `DATABASE_URL` is set; asynchronous timing-safe secret verification, login throttling, same-origin WebSockets, security headers, and `/api/health` readiness reporting.
 
 ## Layout
 
@@ -60,23 +65,25 @@ Open the URL in several tabs to play together. Heroes persist in `data/saves.jso
 shared/world.js   deterministic world generation (G ground / O object layers)
 shared/data.js    classes, monsters, quests, NPCs, rarity, XP curve
 server/index.js   HTTP static + WebSocket game loop (20 Hz tick, 10 Hz state)
-client/           index.html, style.css, main.js (net/input/UI/render), sprites.js, gfx.js
-scripts/smoke*.mjs headless end-to-end tests (solo, party, dungeon, trade). The dungeon test starts the server with EM_DEBUG=1, which enables teleport/god-mode messages - never set it on a public server.
+server/store.js   file/Postgres persistence adapters; server/security.js authentication and HTTP/WS policy
+client/           index.html, style.css, main.js (net/UI/render), input.js, sprites.js, hero32.js, gfx.js
+shared/combat.js  pure stat/combat formulas shared with the deterministic balance simulator
+scripts/          security/input/UI/store units plus headless end-to-end and balance tests. Dungeon tests start the server with EM_DEBUG=1 - never set it on a public server.
 ```
 
 ## Ideas next
 
-A bank, crafting, more zones/dungeons, player-vs-player arenas, mounts, crafting, bank, touch controls.
+A bank, crafting and salvage, stable quest IDs with multiple active quests, friends/guilds with block/report tools, player-vs-player arenas, mounts, and larger automated load tests.
 
 ## Deploy (shareable link)
 
 One Node service serves the client and the WebSocket (`/ws`), so a single host is enough.
 
-**Render** (free plan, used for the public link): `render.yaml` is a ready blueprint (Node service, health check `/api/status`, auto-deploys from `main`). The free plan sleeps after ~15 minutes idle (first visit then takes about a minute) and its disk is wiped on restart, so by default heroes saved on the free plan reset on every deploy. To keep them, set the `DATABASE_URL` environment variable to a free Supabase or Neon Postgres connection string; heroes are then stored in the database (the file save is used when it is unset, which is what local dev and the tests use). `/api/status` shows `store` and `storeOk`. Step-by-step setup, export/restore and caveats: [docs/persistence.md](docs/persistence.md).
+**Render** (free plan, used for the public link): `render.yaml` is a ready blueprint (Node service, readiness check `/api/health`, auto-deploys from `main`). The free plan sleeps after ~15 minutes idle (first visit then takes about a minute) and its disk is wiped on restart, so by default heroes saved on the free plan reset on every deploy. To keep them, set the `DATABASE_URL` environment variable to a free Supabase or Neon Postgres connection string; heroes are then stored in the database (the file save is used when it is unset, which is what local dev and the tests use). `/api/status` exposes game metrics and `/api/health` reports persistence readiness. Step-by-step setup, export/restore and caveats: [docs/persistence.md](docs/persistence.md).
 
 **Railway**: from this folder run `railway login`, `railway init`, `railway up`, then add a
 **Volume mounted at `/data`** so hero saves survive redeploys, and `railway domain` for a public URL. `railway.json` and the
-`Dockerfile` are already set up (health check `/api/status`, saves at `EM_SAVE=/data/saves.json`).
+`Dockerfile` are already set up (health check `/api/health`, saves at `EM_SAVE=/data/saves.json`).
 
 **Quick temporary link** (only while this PC and `npm start` are running): `npx cloudflared tunnel --url http://localhost:3000`
 prints a public `https://*.trycloudflare.com` URL.

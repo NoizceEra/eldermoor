@@ -12,10 +12,10 @@ const SAVE = 'data/test-saves-jobs.json';
 const salt = 'abcdef0123456789';
 fs.mkdirSync('data', { recursive: true });
 fs.writeFileSync(SAVE, JSON.stringify({
-  oldhero: { name: 'OldHero', salt, hash: crypto.scryptSync('x', salt, 32).toString('hex'), cls: 'ranger', lvl: 12, xp: 5, gold: 77,
+  oldhero: { name: 'OldHero', salt, hash: crypto.scryptSync('test', salt, 32).toString('hex'), cls: 'ranger', lvl: 12, xp: 5, gold: 77,
     inv: Array(20).fill(null), eq: { weapon: null, armor: null, trinket: null }, quest: { i: 1, s: 0, p: 0 }, x: 64, y: 67, hp: 50 },
   // saved before paladin/druid/necromancer/monk existed: its jobs table has only the original six
-  legacyhero: { v: 3, name: 'LegacyHero', salt, hash: crypto.scryptSync('x', salt, 32).toString('hex'), look: [0, 0, 0, 0], job: 'mage', lvl: 8, xp: 0, gold: 5,
+  legacyhero: { v: 3, name: 'LegacyHero', salt, hash: crypto.scryptSync('test', salt, 32).toString('hex'), look: [0, 0, 0, 0], job: 'mage', lvl: 8, xp: 0, gold: 5,
     jobs: { warrior: { lvl: 0, xp: 0 }, mage: { lvl: 6, xp: 0 }, ranger: { lvl: 0, xp: 0 }, cleric: { lvl: 0, xp: 0 }, rogue: { lvl: 0, xp: 0 }, warlock: { lvl: 0, xp: 0 } },
     attr: { str: 0, dex: 0, int: 0, vit: 0, spr: 0 }, points: 0, bar: ['fireball', null, null, null, null, null],
     inv: Array(20).fill(null), eq: {}, quest: { i: 0, s: 0, p: 0 }, x: 64, y: 67, hp: 50 },
@@ -38,7 +38,7 @@ async function bot(name, cls = 'warrior') {
     else if (m.t === 'ev') b.evs.push(m); else if (m.t === 'err') fail(m.m);
   });
   await new Promise((r) => ws.on('open', r));
-  b.tx({ t: 'login', name, pass: 'x', cls });
+  b.tx({ t: 'login', name, pass: 'test', cls });
   for (let i = 0; i < 40 && !b.me; i++) await wait(100);
   if (!b.me) fail(`${name}: no me message`);
   await wait(250); // let the first state packets arrive

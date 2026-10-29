@@ -18,7 +18,7 @@ async function bot(name) {
   const b = { name, me: null, ents: [], tx: (o) => ws.send(JSON.stringify(o)), ws };
   ws.on('message', (d) => { const m = JSON.parse(d); if (m.t === 'me') b.me = m; else if (m.t === 's') b.ents = m.e; else if (m.t === 'err') fail(m.m); });
   await new Promise((r) => ws.on('open', r));
-  b.tx({ t: 'login', name, pass: 'x', cls: 'warrior' });
+  b.tx({ t: 'login', name, pass: 'test', cls: 'warrior' });
   await wait(500);
   if (!b.me) fail(`${name}: no me message`);
   return b;

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#1c1530">
 <meta name="mobile-web-app-capable" content="yes">
 <title>Eldermoor Online</title>
@@ -12,7 +12,7 @@
 <link rel="stylesheet" href="/client/style.css">
 </head>
 <body>
-<canvas id="screen"></canvas>
+<canvas id="screen" aria-hidden="true"></canvas>
 
 <div id="login">
   <div class="logo">ELDERMOOR</div>
@@ -23,10 +23,10 @@
     <div class="creator"><canvas id="prev" width="32" height="32"></canvas><div class="lookrows" id="lookRows"></div></div>
     <div class="btnrow"><button type="button" id="turn">Turn</button><button type="button" id="rnd">Randomize</button></div>
     <label>Hero name <input id="name" maxlength="14" autocomplete="off" placeholder="3-14 letters" required></label>
-    <label>Secret word <input id="pass" type="password" maxlength="40" placeholder="protects your hero"></label>
+    <label>Secret word <input id="pass" type="password" minlength="4" maxlength="64" autocomplete="current-password" placeholder="4+ characters; protects your hero" required></label>
     <button id="enter" type="submit">ENTER THE REALM</button>
-    <div class="err" id="loginErr"></div>
-    <div class="small" id="online"></div>
+    <div class="err" id="loginErr" role="alert" aria-live="assertive"></div>
+    <div class="small" id="online" role="status" aria-live="polite"></div>
   </form>
   <div class="small foot">WASD walk &middot; click to move &amp; attack &middot; 1-6 skills &middot; Q potion &middot; C hero &middot; J jobs &middot; K skills &middot; I pack &middot; E talk &middot; Enter chat</div>
 </div>
@@ -43,23 +43,24 @@
   <div id="party" class="hidden"></div>
   <div id="invite" class="panel hidden"></div>
   <div id="trade" class="panel hidden"></div>
-  <div id="menu" class="panel hidden"></div>
+  <div id="menu" class="panel hidden" role="dialog" aria-modal="true" aria-label="Game menu"></div>
   <div id="qlog" class="panel hidden"></div>
   <div id="char" class="panel hidden"></div>
+  <div id="tutorial" class="panel hidden" role="dialog" aria-modal="true" aria-labelledby="tutorialTitle"></div>
   <div id="targetFrame" class="panel hidden">
     <div class="row"><b id="tName"></b><span id="tLvl"></span></div>
     <div class="bar hp"><i id="tBar"></i></div>
     <div id="tFx" class="fxrow"></div>
   </div>
   <div id="side">
-    <canvas id="minimap" width="64" height="64" class="panel" title="Click or press N for the world map"></canvas>
+    <canvas id="minimap" width="64" height="64" class="panel" title="Click or press N for the world map" role="button" tabindex="0" aria-label="Open world map"></canvas>
     <div id="regionName" class="small"></div>
     <div id="quest" class="panel small"></div>
   </div>
   <div id="skillbar"></div>
   <div id="chat">
-    <div id="chatLog"></div>
-    <input id="chatIn" maxlength="120" placeholder="Press Enter to chat" autocomplete="off">
+    <div id="chatLog" role="log" aria-live="polite" aria-relevant="additions"></div>
+    <input id="chatIn" maxlength="120" placeholder="Press Enter to chat" autocomplete="off" aria-label="Chat message">
   </div>
   <div id="inv" class="panel hidden">
     <div class="row"><b>Pack</b><canvas id="invPrev" width="32" height="32"></canvas><button class="x" data-close="inv">x</button></div>
@@ -84,9 +85,9 @@
   <div id="banner" class="hidden"></div>
   <div id="region"></div>
   <div id="worldmap" class="panel hidden"><div class="row"><b>World map</b><button class="x" data-close="worldmap">x</button></div><canvas id="wmCanvas" width="512" height="512"></canvas></div>
-  <div id="toast"></div>
+  <div id="toast" role="status" aria-live="polite"></div>
 </div>
-<div id="dc" class="hidden"><div class="panel"><b>Disconnected</b><p id="dcWhy"></p><button onclick="location.reload()">RECONNECT</button></div></div>
+<div id="dc" class="hidden" role="alertdialog" aria-modal="true"><div class="panel"><b>Disconnected</b><p id="dcWhy"></p><button id="reconnect">RECONNECT</button></div></div>
 <script type="module" src="/client/main.js"></script>
 </body>
 </html>

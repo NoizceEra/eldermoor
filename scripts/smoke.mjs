@@ -27,7 +27,7 @@ ws.on('message', (d) => {
 });
 await new Promise((r) => ws.on('open', r));
 const tx = (o) => ws.send(JSON.stringify(o));
-tx({ t: 'login', name: 'SmokeBot', pass: 'x', cls: 'warrior' });
+tx({ t: 'login', name: 'SmokeBot', pass: 'test', cls: 'warrior' });
 for (let i = 0; i < 40 && !st.me; i++) await wait(100);
 if (!st.me) fail('no me message');
 await wait(250); // let the first state packets arrive

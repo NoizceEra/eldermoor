@@ -6,6 +6,7 @@ import { EQ_KEYS, EQ_LABEL, LOOK_LIMITS, LOOK_LABELS, LOOK_COST, SKIN_TONES, HAI
 import * as SP from '/client/sprites.js';
 import * as HERO from '/client/hero32.js';
 import { TS, CHUNK, buildWorldArt, drawWaterTile, drawLavaTile, treeSprite } from '/client/gfx.js';
+import { GAMEPAD_HELP, moveFocusIndex, readGamepad } from '/client/input.js';
 
 const $ = (id) => document.getElementById(id);
 const worldOver = generateWorld(SEED);
@@ -176,6 +177,7 @@ function onMsg(m) {
     case 'welcome':
       myId = m.id; applyZone(m.zone); inGame = true;
       $('login').classList.add('hidden'); $('ui').classList.remove('hidden');
+      queueMicrotask(() => showTutorial());
       break;
     case 'err': $('loginErr').textContent = m.m; ws.close(); break;
     case 's': applyState(m); break;
@@ -257,6 +259,7 @@ function applyState(m) {
 // ------------------------------------------------------------------ events & fx
 const tc = (x, y) => [x * TS + 8, y * TS + 8];
 function burst(x, y, col, n = 8, spd = 30, life = 400, size = 1) {
+  if (!settings.motion) { n = Math.min(n, 2); life = Math.min(life, 180); }
   for (let i = 0; i < n; i++) {
     const a = Math.random() * Math.PI * 2, s = spd * (0.4 + Math.random() * 0.8);
     parts.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 6, t0: now(), life: life * (0.6 + Math.random() * 0.6), col: Array.isArray(col) ? col[i % col.length] : col, size });
@@ -399,15 +402,68 @@ function runKeys(t) {
   const m = meEnt();
   if (!m || m.d || t < nextStep || document.activeElement === $('chatIn')) return;
   let dx = 0, dy = 0;
-  const last = [...keys].reverse().find((k) => ['w', 'a', 's', 'd', 'arrowup', 'arrowleft', 'arrowdown', 'arrowright'].includes(k));
-  if (last === 'w' || last === 'arrowup') dy = -1;
-  else if (last === 's' || last === 'arrowdown') dy = 1;
-  else if (last === 'a' || last === 'arrowleft') dx = -1;
-  else if (last === 'd' || last === 'arrowright') dx = 1;
+  const gamepadMove = ['move_up', 'move_left', 'move_down', 'move_right'].find((action) => gamepadHeld.has(action));
+  const last = gamepadMove || [...keys].reverse().find((k) => ['w', 'a', 's', 'd', 'arrowup', 'arrowleft', 'arrowdown', 'arrowright'].includes(k));
+  if (last === 'w' || last === 'arrowup' || last === 'move_up') dy = -1;
+  else if (last === 's' || last === 'arrowdown' || last === 'move_down') dy = 1;
+  else if (last === 'a' || last === 'arrowleft' || last === 'move_left') dx = -1;
+  else if (last === 'd' || last === 'arrowright' || last === 'move_right') dx = 1;
   if (dx || dy) { goal = null; tx({ t: 'move', dx, dy }); nextStep = t + stepMs() - 8; }
 }
 
 // ------------------------------------------------------------------ input
+let gamepadButtons = [], gamepadHeld = new Set();
+function gamepadPanel() {
+  for (const id of ['tutorial', 'invite', 'trade', 'dialog', 'char', 'inv', 'worldmap', 'qlog', 'menu']) {
+    const panel = $(id);
+    if (panel && !panel.classList.contains('hidden')) return panel;
+  }
+  return null;
+}
+function moveGamepadFocus(panel, direction) {
+  const controls = [...panel.querySelectorAll('button:not(:disabled), input:not(:disabled), [tabindex="0"]')];
+  if (!controls.length) return;
+  const index = moveFocusIndex(controls.indexOf(document.activeElement), controls.length, direction);
+  controls[index]?.focus();
+}
+function gamepadAction(action) {
+  if (!inGame) return;
+  const panel = gamepadPanel();
+  if (panel) {
+    if (action.startsWith('nav_')) moveGamepadFocus(panel, action === 'nav_up' || action === 'nav_left' ? -1 : 1);
+    else if (action === 'interact') {
+      const focused = panel.contains(document.activeElement) ? document.activeElement : panel.querySelector('button:not(:disabled), input:not(:disabled), [tabindex="0"]');
+      focused?.click(); focused?.focus();
+    } else if (action === 'back') {
+      if (panel.id === 'tutorial') closeTutorial();
+      else if (panel.id === 'trade') tx({ t: 'trade_cancel' });
+      else if (panel.id === 'dialog') closeDialog();
+      else panel.classList.add('hidden');
+    }
+    return;
+  }
+  if (action === 'interact') interact();
+  else if (action === 'target') cycleTarget();
+  else if (action === 'potion') quaff();
+  else if (action.startsWith('skill')) tx({ t: 'skill', n: Number(action.slice(5)) });
+  else if (action === 'menu') toggleMenu();
+  else if (action === 'map') toggleMap();
+  else if (action === 'back') {
+    if (escapeMenu()) return;
+    $('worldmap').classList.add('hidden');
+    if (tradeView) tx({ t: 'trade_cancel' });
+    closeDialog(); $('inv').classList.add('hidden'); $('char').classList.add('hidden');
+    tx({ t: 'target', id: 0 }); goal = null;
+  }
+}
+function pollGamepad() {
+  const pad = Array.from(navigator.getGamepads?.() || []).find(Boolean);
+  if (!pad) { gamepadButtons = []; gamepadHeld = new Set(); return; }
+  const state = readGamepad(pad, gamepadButtons, settings.deadzone);
+  gamepadButtons = state.buttons; gamepadHeld = state.held;
+  if (state.held.size || state.pressed.size) document.body.dataset.input = 'gamepad';
+  for (const action of state.pressed) gamepadAction(action);
+}
 function worldPos(ev) {
   const r = screen.getBoundingClientRect();
   const lx0 = ((ev.clientX - r.left) / r.width) * VW, ly0 = ((ev.clientY - r.top) / r.height) * VH;
@@ -458,7 +514,13 @@ let clickMark = null;
 const toastMove = (x, y) => { clickMark = { x, y, t0: now() }; };
 
 addEventListener('keydown', (e) => {
+  document.body.dataset.input = 'keyboard';
   const k = e.key.toLowerCase();
+  if (inGame && isOpen('tutorial')) {
+    if (k === 'escape') closeTutorial();
+    e.preventDefault();
+    return;
+  }
   if (document.activeElement === $('chatIn')) {
     if (k === 'enter') { const v = $('chatIn').value.trim(); if (v) sendChat(v); $('chatIn').value = ''; $('chatIn').blur(); }
     else if (k === 'escape') { $('chatIn').blur(); }
@@ -610,8 +672,19 @@ function renderParty() {
 
 
 // ---- settings, help menu and quest log
-let settings = { vol: 0.7, dmg: true, names: true, shake: true, music: true };
+let settings = {
+  vol: 0.7, dmg: true, names: true, shake: true, music: true, deadzone: 0.24,
+  uiScale: 1, motion: !matchMedia('(prefers-reduced-motion: reduce)').matches, contrast: false,
+};
 try { settings = { ...settings, ...JSON.parse(localStorage.getItem('em_settings') || '{}') }; } catch { /* private mode */ }
+function applySettings() {
+  settings.uiScale = Math.max(0.85, Math.min(1.5, Number(settings.uiScale) || 1));
+  settings.deadzone = Math.max(0.1, Math.min(0.5, Number(settings.deadzone) || 0.24));
+  document.documentElement.style.setProperty('--ui-scale', settings.uiScale);
+  document.documentElement.dataset.reducedMotion = String(!settings.motion);
+  document.documentElement.dataset.highContrast = String(!!settings.contrast);
+}
+applySettings();
 const saveSettings = () => { try { localStorage.setItem('em_settings', JSON.stringify(settings)); localStorage.setItem('em_mute', muted ? '1' : '0'); } catch { /* ignore */ } };
 const isOpen = (id) => !$(id).classList.contains('hidden');
 function toggleMenu() { $('qlog').classList.add('hidden'); $('menu').classList.toggle('hidden'); if (isOpen('menu')) renderMenu(); }
@@ -639,9 +712,16 @@ function renderMenu() {
   toggle('Floating damage numbers', 'dmg');
   toggle('Monster names (always shown for your target)', 'names');
   toggle('Screen shake when hit', 'shake');
+  toggle('Motion effects', 'motion', applySettings);
+  toggle('High contrast', 'contrast', applySettings);
+  const us = mkEl('div', 'setrow', '<span>Interface scale</span>'); const ur = document.createElement('input'); ur.type = 'range'; ur.min = 85; ur.max = 150; ur.value = Math.round(settings.uiScale * 100);
+  ur.oninput = () => { settings.uiScale = ur.value / 100; applySettings(); saveSettings(); }; us.appendChild(ur); box.appendChild(us);
+  const dz = mkEl('div', 'setrow', '<span>Gamepad deadzone</span>'); const dr = document.createElement('input'); dr.type = 'range'; dr.min = 10; dr.max = 50; dr.value = Math.round(settings.deadzone * 100);
+  dr.oninput = () => { settings.deadzone = dr.value / 100; saveSettings(); }; dz.appendChild(dr); box.appendChild(dz);
   const btns = mkEl('div', 'btnrow'); const ql = mkEl('button', '', 'Quest log (L)'); ql.onclick = () => toggleQlog();
   const mp = mkEl('button', '', 'World map (N)'); mp.onclick = () => { box.classList.add('hidden'); toggleMap(); };
-  const rl = mkEl('button', '', 'Log out'); rl.onclick = () => location.reload(); btns.append(ql, mp, rl); box.appendChild(btns);
+  const tut = mkEl('button', '', 'Replay guide'); tut.onclick = () => { box.classList.add('hidden'); showTutorial(true); };
+  const rl = mkEl('button', '', 'Log out'); rl.onclick = () => location.reload(); btns.append(ql, mp, tut, rl); box.appendChild(btns);
   const emo = mkEl('div', 'btnrow');
   for (const e of ['wave', 'dance', 'sit', 'cheer']) { const b = mkEl('button', '', e[0].toUpperCase() + e.slice(1)); b.onclick = () => { tx({ t: 'emote', e }); box.classList.add('hidden'); }; emo.appendChild(b); }
   box.appendChild(mkEl('h4', '', 'Emotes (or /wave /dance /sit /cheer)')); box.appendChild(emo);
@@ -653,6 +733,40 @@ function renderMenu() {
     ['N', 'world map'], ['Enter', 'chat (/help)'], ['H or Esc', 'this menu'], ['M', 'mute'],
   ];
   box.appendChild(mkEl('div', 'keys', keys.map(([k, v]) => `<div><b>${k}</b> ${v}</div>`).join('')));
+  box.appendChild(mkEl('h4', '', 'Gamepad'));
+  box.appendChild(mkEl('div', 'keys', GAMEPAD_HELP.map(([k, v]) => `<div><b>${k}</b> ${v}</div>`).join('')));
+}
+
+const TUTORIAL_STEPS = [
+  ['Welcome to Eldermoor', 'Your hero is saved to the server under this name and secret word. Keep the secret: there is no account-recovery flow yet.'],
+  ['Move and explore', 'Use WASD, the arrow keys, the left stick, the touch joystick, or click the ground. The minimap marks NPCs in gold and other heroes in blue.'],
+  ['Talk and fight', 'Press E or the gamepad south button near an NPC or portal. Click a monster—or press Tab, Space, or the gamepad target button—to attack it.'],
+  ['Skills and survival', 'Use 1–6 or the six gamepad shoulder/stick buttons for skills. Q or the gamepad top button drinks a potion. Red ground markers warn of dangerous attacks.'],
+  ['Your first objective', 'Talk to the marked quest giver, follow the quest panel, equip drops from your Pack, and open the Menu for the map, controls, accessibility settings, parties and chat commands.'],
+];
+let tutorialStep = 0, tutorialPreviousFocus = null;
+function closeTutorial() {
+  $('tutorial').classList.add('hidden');
+  try { localStorage.setItem('em_tutorial_v1', 'done'); } catch { /* private mode */ }
+  tutorialPreviousFocus?.focus?.(); tutorialPreviousFocus = null;
+}
+function showTutorial(force = false) {
+  if (!inGame || (!force && localStorage.getItem('em_tutorial_v1') === 'done')) return;
+  const box = $('tutorial'); tutorialStep = 0; tutorialPreviousFocus = document.activeElement;
+  const draw = () => {
+    const [title, text] = TUTORIAL_STEPS[tutorialStep];
+    box.innerHTML = '';
+    const heading = mkEl('h2', '', title); heading.id = 'tutorialTitle';
+    const progress = mkEl('div', 'step', `Step ${tutorialStep + 1} of ${TUTORIAL_STEPS.length}`);
+    const body = mkEl('p', '', text);
+    const buttons = mkEl('div', 'btnrow');
+    const skip = mkEl('button', '', 'Skip guide'); skip.onclick = closeTutorial;
+    if (tutorialStep > 0) { const back = mkEl('button', '', 'Back'); back.onclick = () => { tutorialStep--; draw(); }; buttons.appendChild(back); }
+    const next = mkEl('button', '', tutorialStep === TUTORIAL_STEPS.length - 1 ? 'Start adventuring' : 'Next');
+    next.onclick = () => { if (++tutorialStep >= TUTORIAL_STEPS.length) closeTutorial(); else draw(); };
+    buttons.append(skip, next); box.append(heading, progress, body, buttons); next.focus();
+  };
+  box.classList.remove('hidden'); draw();
 }
 function townOfNpc(id) {
   const n = NPCS.find((q) => q.id === id);
@@ -710,6 +824,7 @@ function toggleMap() {
   if (!box.classList.contains('hidden')) drawWorldMap();
 }
 $('minimap').addEventListener('click', toggleMap);
+$('minimap').addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggleMap(); } });
 
 function cycleTarget() {
   const m = meEnt(); if (!m) return;
@@ -1496,6 +1611,7 @@ function tickFrame() {
   const t = now(), dt = Math.min(0.1, (t - last) / 1000); last = t;
   stepEntities(dt, t);
   if (inGame) {
+    pollGamepad();
     runKeys(t); runGoal(t);
     if (pendingInvite && !pendingInvite.offer && t > pendingInvite.until) { pendingInvite = null; showInvite(); }
     if (me) {
@@ -1601,12 +1717,12 @@ const cardsEl = $('classes');
 function selectClass(c) {
   selClass = c;
   buildCreator();
-  [...cardsEl.children].forEach((el) => el.classList.toggle('sel', el.dataset.c === c));
+  [...cardsEl.children].forEach((el) => { const selected = el.dataset.c === c; el.classList.toggle('sel', selected); el.setAttribute('aria-pressed', String(selected)); });
   const J = JOBS[c], first = skillsOfJob(c)[0];
   $('classDesc').innerHTML = `<b style="color:${J.color}">${J.name}</b> <span class="small">${J.role}</span> - ${J.desc}<br>${J.trait}<br>First skill: ${SKILLS[first].name}. You can learn every job later and mix their skills.`;
 }
 for (const c of JOB_ORDER) {
-  const el = document.createElement('div'); el.className = 'card'; el.dataset.c = c;
+  const el = document.createElement('button'); el.type = 'button'; el.className = 'card'; el.dataset.c = c; el.setAttribute('aria-pressed', 'false');
   const cv = document.createElement('canvas'); cv.width = 32; cv.height = 32; cv.getContext('2d').drawImage(HERO.classSprite(c, 0, 0), 0, 0);
   el.append(cv, document.createTextNode(JOBS[c].name));
   el.onclick = () => selectClass(c);
@@ -1622,6 +1738,7 @@ $('loginForm').addEventListener('submit', (e) => {
   if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
   connect(name, $('pass').value, selClass, selLook);
 });
+$('reconnect').onclick = () => location.reload();
 fetch('/api/status').then((r) => r.json()).then((s) => { $('online').textContent = `${s.online} hero${s.online === 1 ? '' : 'es'} online`; }).catch(() => {});
 
 document.fonts && document.fonts.load('10px "Press Start 2P"').catch(() => {});

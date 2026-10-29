@@ -7,7 +7,7 @@ services:
     branch: main
     buildCommand: npm install --omit=dev
     startCommand: node server/index.js
-    healthCheckPath: /api/status
+    healthCheckPath: /api/health
     autoDeploy: true
     envVars:
       - key: NODE_VERSION

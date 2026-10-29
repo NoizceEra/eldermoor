@@ -6,6 +6,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
+import { AttemptLimiter, hashSecret, isAllowedOrigin, securityHeaders, validateNewSecret, verifySecret } from './security.js';
 import { W, G, TOWN, TOWNS, BOSS, BOSSES, CAMP, CAMPS, ISLANDS, inTown, generateWorld, generateDungeon, isSolid } from '../shared/world.js';
 import {
   SEED, TICK_MS, INV_SIZE, MOBS, QUESTS, RARITY, NPCS,
@@ -23,6 +24,8 @@ import { GCD_MS, deriveStats, power as combatPower, mitigation } from '../shared
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SAVE_FILE = process.env.EM_SAVE || path.join(ROOT, 'data', 'saves.json');
 const PORT = Number(process.env.PORT) || 3000;
+const ALLOWED_ORIGINS = process.env.EM_ALLOWED_ORIGINS || '';
+const loginLimiter = new AttemptLimiter();
 
 // ---------------------------------------------------------------- helpers
 const world = generateWorld(SEED);
@@ -256,8 +259,6 @@ function migrate(save) {
   for (const j of JOB_ORDER) if (!o.jobs[j]) o.jobs[j] = { lvl: 0, xp: 0 };
   return o;
 }
-const hashPass = (pass, salt) => crypto.scryptSync(pass, salt, 32).toString('hex');
-
 // ---------------------------------------------------------------- networking helpers
 const send = (p, o) => { if (p.ws && p.ws.readyState === 1) p.ws.send(JSON.stringify(o)); };
 const log = (p, m, c = '#ddd') => send(p, { t: 'log', m, c });
@@ -320,27 +321,36 @@ const meMsg = (p) => ({
   fx: activeFx(p), tg: p.target, jobWait: Math.max(0, (p.jobSwitchAt || 0) - Date.now()),
 });
 
-function login(ws, m) {
+async function login(ws, m) {
   const name = String(m.name || '').trim();
   if (!/^[A-Za-z0-9_ ]{3,14}$/.test(name)) return send({ ws }, { t: 'err', m: 'Name must be 3-14 letters, numbers, spaces or _' });
   const pass = String(m.pass || '').slice(0, 64);
   const k = name.toLowerCase();
+  const limitKey = `${ws.clientIp || 'unknown'}|${k}`;
+  const allowed = loginLimiter.check(limitKey);
+  if (!allowed.ok) return send({ ws }, { t: 'err', m: `Too many failed attempts. Try again in ${Math.max(1, Math.ceil(allowed.retryMs / 1000))} seconds.` });
   const saved = saves[k];
   let p;
   if (saved) {
-    if (hashPass(pass, saved.salt) !== saved.hash) return send({ ws }, { t: 'err', m: 'Wrong secret word for that hero.' });
+    if (!(await verifySecret(pass, saved.salt, saved.hash))) {
+      loginLimiter.fail(limitKey);
+      return send({ ws }, { t: 'err', m: 'Wrong secret word for that hero.' });
+    }
     p = { ...migrate(saved), buffs: {}, cd: {}, fx: {} };
   } else {
+    const secret = validateNewSecret(pass);
+    if (!secret.ok) { loginLimiter.fail(limitKey); return send({ ws }, { t: 'err', m: secret.message }); }
     const job = JOBS[m.cls] ? m.cls : 'warrior';
     const salt = crypto.randomBytes(8).toString('hex');
     const inv = Array(INV_SIZE).fill(null);
     inv[0] = { ...mkPotion(false), c: 3 };
     p = {
-      ...newProgress(job), v: 3, look: validLook(m.look) || defaultLook(name), name, salt, hash: hashPass(pass, salt), lvl: 1, xp: 0, gold: 20, inv,
+      ...newProgress(job), v: 3, look: validLook(m.look) || defaultLook(name), name, salt, hash: await hashSecret(pass, salt), lvl: 1, xp: 0, gold: 20, inv,
       eq: starterKit(job), quest: { i: 0, s: 0, p: 0 },
       x: 0, y: 0, hp: 1, buffs: {}, cd: {}, fx: {},
     };
   }
+  loginLimiter.clear(limitKey);
   for (const old of players.values()) if (old.name.toLowerCase() === k) { old.ws.close(4000, 'Logged in elsewhere'); dropPlayer(old); }
   p.id = nextId++; p.k = 'p'; p.ws = ws; p.f = 0; p.dead = false; p.target = null;
   p.moveAt = 0; p.atkAt = 0; p.potAt = 0; p.want = null; p.lastHit = 0; p.regenAt = 0; p.dirty = true; p.msgs = 0;
@@ -1349,7 +1359,13 @@ function onMessage(ws, raw) {
   let m;
   try { m = JSON.parse(raw); } catch { return; }
   if (!m || typeof m.t !== 'string') return;
-  if (m.t === 'login') { if (!ws.player) login(ws, m); return; }
+  if (m.t === 'login') {
+    if (!ws.player && !ws.authPending) {
+      ws.authPending = true;
+      login(ws, m).catch(() => send({ ws }, { t: 'err', m: 'Login failed. Please try again.' })).finally(() => { ws.authPending = false; });
+    }
+    return;
+  }
   const p = ws.player;
   if (!p || !players.has(p.id)) return;
   if (++p.msgs > 400) return; // flood guard, reset every second
@@ -1604,8 +1620,14 @@ function tick() {
 // ---------------------------------------------------------------- http + ws
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.png': 'image/png', '.json': 'application/json', '.svg': 'image/svg+xml' };
 const server = http.createServer((req, res) => {
+  for (const [name, value] of Object.entries(securityHeaders())) res.setHeader(name, value);
   let url = decodeURIComponent((req.url || '/').split('?')[0]);
   if (url === '/') url = '/client/index.html';
+  if (url === '/api/health') {
+    const ok = store.ok;
+    res.writeHead(ok ? 200 : 503, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+    return res.end(JSON.stringify({ ok, store: store.kind, queuedSaves: store.pendingCount || 0, uptime: Math.round(process.uptime()) }));
+  }
   if (url === '/api/status') {
     res.writeHead(200, { 'content-type': 'application/json' });
     return res.end(JSON.stringify({ name: 'eldermoor', online: players.size, parties: parties.size, instances: instances.size, trades: trades.size, mobs: liveMobs(overworld).length, awake: awakeMobs, tickMs: Math.round(tickMs * 100) / 100, uptime: Math.round(process.uptime()), store: store.kind, storeOk: store.ok }));
@@ -1619,8 +1641,18 @@ const server = http.createServer((req, res) => {
     res.end(buf);
   });
 });
-const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 4096 });
-wss.on('connection', (ws) => {
+const wss = new WebSocketServer({
+  server,
+  path: '/ws',
+  maxPayload: 4096,
+  verifyClient(info, done) {
+    const host = String(info.req.headers['x-forwarded-host'] || info.req.headers.host || '');
+    const allowed = isAllowedOrigin(info.origin, host, ALLOWED_ORIGINS);
+    done(allowed, allowed ? undefined : 403, allowed ? undefined : 'Cross-origin WebSocket rejected');
+  },
+});
+wss.on('connection', (ws, req) => {
+  ws.clientIp = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown').split(',')[0].trim();
   ws.on('message', (d) => onMessage(ws, d.toString()));
   ws.on('close', () => { if (ws.player) dropPlayer(ws.player); });
   ws.on('error', () => {});

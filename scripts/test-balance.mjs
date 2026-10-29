@@ -28,7 +28,7 @@ async function bot(name, cls) {
     if (m.t === 'me') b.me = m; else if (m.t === 's') b.ents = m.e; else if (m.t === 'ev') b.evs.push(m); else if (m.t === 'err') fail(m.m);
   });
   await new Promise((r) => ws.on('open', r));
-  b.tx({ t: 'login', name, pass: 'x', cls });
+  b.tx({ t: 'login', name, pass: 'test', cls });
   await wait(450);
   if (!b.me) fail(`${name}: no me message`);
   b.pos = () => b.ents.find((e) => e.i === b.me.id);

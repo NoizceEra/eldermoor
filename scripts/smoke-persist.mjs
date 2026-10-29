@@ -29,7 +29,7 @@ async function bot(name, look) {
     if (m.t === 'me') b.me = m; else if (m.t === 'err') fail(m.m);
   });
   await new Promise((r) => ws.on('open', r));
-  b.tx({ t: 'login', name, pass: 'x', cls: 'mage', look });
+  b.tx({ t: 'login', name, pass: 'test', cls: 'mage', look });
   await wait(450);
   if (!b.me) fail(`${name}: no me message`);
   return b;

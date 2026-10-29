@@ -1,29 +1,31 @@
 :root {
   --bg: #1c1530; --bg2: #2a2045; --edge: #5a4a8a; --ink: #0d0a18; --txt: #eae6ff; --dim: #9a90c0; --gold: #ffd23a;
   --font: 'Press Start 2P', 'Lucida Console', 'Courier New', monospace;
+  --ui-scale: 1;
 }
 * { box-sizing: border-box; }
-html, body { margin: 0; height: 100%; overflow: hidden; background: #0d0a18; color: var(--txt); font-family: var(--font); font-size: 10px; line-height: 1.5; user-select: none; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #0d0a18; color: var(--txt); font-family: var(--font); font-size: calc(10px * var(--ui-scale)); line-height: 1.5; user-select: none; }
 canvas#screen { position: fixed; left: 0; top: 0; image-rendering: pixelated; image-rendering: crisp-edges; display: block; }
 .hidden { display: none !important; }
-.small { font-size: 8px; color: var(--dim); }
+.small { font-size: calc(8px * var(--ui-scale)); color: var(--dim); }
 
 .panel { background: var(--bg); box-shadow: 0 0 0 2px var(--ink), 0 0 0 4px var(--edge), 0 0 0 6px var(--ink); }
-button { font-family: var(--font); font-size: 9px; color: var(--txt); background: #4a3a7a; border: 0; padding: 8px 10px; cursor: pointer; box-shadow: inset -2px -2px 0 #2a2050, inset 2px 2px 0 #7a68b8, 0 0 0 2px var(--ink); }
+button { font-family: var(--font); font-size: calc(9px * var(--ui-scale)); color: var(--txt); background: #4a3a7a; border: 0; padding: 8px 10px; cursor: pointer; box-shadow: inset -2px -2px 0 #2a2050, inset 2px 2px 0 #7a68b8, 0 0 0 2px var(--ink); }
 button:hover { background: #5a4a92; }
 button:active { box-shadow: inset 2px 2px 0 #2a2050, inset -2px -2px 0 #7a68b8, 0 0 0 2px var(--ink); }
 button.x { padding: 2px 6px; }
-input { font-family: var(--font); font-size: 10px; color: var(--txt); background: var(--ink); border: 0; padding: 8px; width: 100%; outline: 0; box-shadow: inset 0 0 0 2px #3a2f60; }
+input { font-family: var(--font); font-size: calc(10px * var(--ui-scale)); color: var(--txt); background: var(--ink); border: 0; padding: 8px; width: 100%; outline: 0; box-shadow: inset 0 0 0 2px #3a2f60; }
 input:focus { box-shadow: inset 0 0 0 2px #8a78d8; }
+:focus-visible { outline: 3px solid #fff3a0; outline-offset: 4px; }
 
 /* login */
-#login { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: radial-gradient(ellipse at center, rgba(13,10,24,.35), rgba(13,10,24,.8)); z-index: 5; padding: 12px; }
+#login { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 14px; overflow-y: auto; overflow-x: hidden; background: radial-gradient(ellipse at center, rgba(13,10,24,.35), rgba(13,10,24,.8)); z-index: 5; padding: max(18px, env(safe-area-inset-top)) 12px max(24px, env(safe-area-inset-bottom)); }
 .logo { font-size: clamp(22px, 6vw, 56px); color: #ffe066; letter-spacing: 3px; text-shadow: 3px 3px 0 #c8651a, 6px 6px 0 #6a2a10, 8px 8px 0 #0d0a18; }
 .tag { color: #cfc4ff; text-shadow: 2px 2px 0 var(--ink); }
-#loginForm { width: min(480px, 94vw); padding: 18px; display: flex; flex-direction: column; gap: 12px; }
+#loginForm { width: min(480px, 94vw); padding: 18px; display: flex; flex: none; flex-direction: column; gap: 12px; margin-bottom: 18px; }
 #loginForm label { display: flex; flex-direction: column; gap: 6px; font-size: 8px; color: var(--dim); }
-.classes { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
-.card { flex: 1; text-align: center; padding: 10px 4px; background: var(--bg2); cursor: pointer; box-shadow: 0 0 0 2px var(--ink); font-size: 9px; }
+.classes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.card { min-width: 0; text-align: center; padding: 10px 4px; background: var(--bg2); cursor: pointer; box-shadow: 0 0 0 2px var(--ink); font-size: 9px; overflow: hidden; }
 .card canvas { width: 64px; height: 64px; image-rendering: pixelated; display: block; margin: 0 auto 6px; }
 .card.sel { background: #4a3a7a; box-shadow: 0 0 0 2px var(--gold), 0 0 0 4px var(--ink); }
 .classDesc { min-height: 44px; font-size: 8px; color: #cfc4ff; }
@@ -35,7 +37,7 @@ input:focus { box-shadow: inset 0 0 0 2px #8a78d8; }
 /* HUD */
 #ui { position: fixed; inset: 0; pointer-events: none; z-index: 2; }
 #ui > * { pointer-events: auto; }
-#plate { position: absolute; left: 14px; top: 14px; width: 240px; padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+#plate { position: absolute; left: calc(14px + env(safe-area-inset-left)); top: calc(14px + env(safe-area-inset-top)); width: 240px; padding: 10px; display: flex; flex-direction: column; gap: 6px; }
 #targetFrame { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); width: 240px; padding: 10px; display: flex; flex-direction: column; gap: 6px; }
 .row { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
 .bar { position: relative; height: 12px; background: var(--ink); box-shadow: 0 0 0 2px var(--ink); overflow: hidden; }
@@ -207,6 +209,15 @@ body.touch #char { top: 8px; left: 8px; right: 8px; width: auto; max-height: 90v
 .slot.eq { width: auto; height: auto; aspect-ratio: 1; flex: none; }
 .slot .lbl { font-size: 6px; }
 @media (max-height: 820px) { .logo { font-size: clamp(20px, 4vw, 34px); } .card canvas { width: 44px; height: 44px; margin-bottom: 3px; } .card { padding: 6px 2px; } .tag { display: none; } }
+@media (max-height: 960px) { #login { gap: 8px; } .logo { font-size: clamp(20px, 4vw, 38px); } .card canvas { width: 48px; height: 48px; margin-bottom: 3px; } .card { padding: 6px 2px; } }
+@media (max-width: 600px) {
+  .logo { font-size: clamp(22px, 8vw, 36px); letter-spacing: 1px; }
+  #loginForm { width: calc(100vw - 20px); padding: 14px; }
+  .classes { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .card canvas { width: 52px; height: 52px; }
+  .classDesc { min-height: 0; }
+  .creator { align-items: flex-start; }
+}
 
 /* ---- world map + region names ---- */
 #regionName { text-align: center; text-shadow: 1px 1px 0 var(--ink); color: #cfc4ff; min-height: 10px; line-height: 1.4; }
@@ -217,7 +228,7 @@ body.touch #char { top: 8px; left: 8px; right: 8px; width: auto; max-height: 90v
 body.touch #region { top: 120px; font-size: 11px; }
 
 /* ---- menu / settings / quest log ---- */
-#menu, #qlog { position: absolute; left: 50%; top: 70px; transform: translateX(-50%); width: min(540px, 94vw); max-height: calc(100vh - 110px); overflow: auto; padding: 14px; display: flex; flex-direction: column; gap: 8px; z-index: 8; }
+#menu, #qlog { position: absolute; left: 50%; top: calc(70px + env(safe-area-inset-top)); transform: translateX(-50%); width: min(540px, 94vw); max-height: calc(100vh - 110px); overflow: auto; padding: 14px; display: flex; flex-direction: column; gap: 8px; z-index: 8; }
 #menu h4, #qlog h4 { margin: 4px 0 0; font-size: 9px; color: var(--gold); font-weight: normal; }
 .setrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: var(--bg2); padding: 6px 8px; font-size: 8px; }
 .setrow input[type=range] { width: 140px; padding: 0; background: none; box-shadow: none; }
@@ -228,5 +239,16 @@ body.touch #region { top: 120px; font-size: 11px; }
 .qrow.done { border-color: #5fd35f; opacity: .6; } .qrow.cur { border-color: var(--gold); } .qrow.lock { opacity: .4; }
 .qrow .ds { color: var(--dim); font-size: 7px; }
 body.touch #menu, body.touch #qlog { top: 8px; width: 96vw; max-height: 92vh; }
+
+/* ---- onboarding + accessibility ---- */
+#tutorial { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(560px, 92vw); max-height: 86vh; overflow: auto; padding: 18px; display: flex; flex-direction: column; gap: 12px; z-index: 12; }
+#tutorial h2 { margin: 0; color: var(--gold); font-size: calc(14px * var(--ui-scale)); }
+#tutorial p { margin: 0; color: var(--txt); line-height: 1.8; }
+#tutorial .step { color: var(--dim); }
+html[data-high-contrast="true"] { --bg: #090909; --bg2: #171717; --edge: #fff; --ink: #000; --txt: #fff; --dim: #ddd; --gold: #ffea00; }
+html[data-reduced-motion="true"] *, html[data-reduced-motion="true"] *::before, html[data-reduced-motion="true"] *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
 
 .dUp { color: #6aff8a; } .dDown { color: #ff7a7a; }

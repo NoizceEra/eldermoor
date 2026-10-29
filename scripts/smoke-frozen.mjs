@@ -26,7 +26,7 @@ async function bot(name) {
     else if (m.t === 'zone') b.zone = m; else if (m.t === 'welcome') b.zone = m.zone; else if (m.t === 'err') fail(m.m);
   });
   await new Promise((r) => ws.on('open', r));
-  b.tx({ t: 'login', name, pass: 'x', cls: 'warrior' });
+  b.tx({ t: 'login', name, pass: 'test', cls: 'warrior' });
   for (let i = 0; i < 30 && !b.me; i++) await wait(100);
   if (!b.me) fail(`${name}: no me message`);
   await wait(250); // let the first state packets arrive

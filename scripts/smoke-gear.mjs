@@ -12,7 +12,7 @@ fs.mkdirSync('data', { recursive: true });
 // a v2 save: three equipment slots (armor / trinket) and an old-style armor item in the pack
 fs.writeFileSync(SAVE, JSON.stringify({
   legacy: {
-    v: 2, name: 'Legacy', salt, hash: crypto.scryptSync('x', salt, 32).toString('hex'), job: 'cleric',
+    v: 2, name: 'Legacy', salt, hash: crypto.scryptSync('test', salt, 32).toString('hex'), job: 'cleric',
     jobs: { warrior: { lvl: 0, xp: 0 }, mage: { lvl: 0, xp: 0 }, ranger: { lvl: 0, xp: 0 }, cleric: { lvl: 4, xp: 0 }, rogue: { lvl: 0, xp: 0 }, warlock: { lvl: 0, xp: 0 } },
     attr: { str: 0, dex: 0, int: 0, vit: 0, spr: 3 }, points: 3, bar: [null, null, null, null, null, null], lvl: 8, xp: 0, gold: 10,
     inv: [{ u: 900, s: 'armor', r: 1, l: 5, b: 'armor', n: 'Old Plate', atk: 0, def: 9, hp: 4, v: 20 }, ...Array(19).fill(null)],
@@ -41,7 +41,7 @@ async function bot(name, cls = 'warrior', look) {
     if (m.t === 'me') b.me = m; else if (m.t === 's') b.ents = m.e; else if (m.t === 'log') b.logs.push(m.m); else if (m.t === 'err') fail(m.m);
   });
   await new Promise((r) => ws.on('open', r));
-  b.tx({ t: 'login', name, pass: 'x', cls, look });
+  b.tx({ t: 'login', name, pass: 'test', cls, look });
   for (let i = 0; i < 40 && !b.me; i++) await wait(100);
   if (!b.me) fail(`${name}: no me message`);
   await wait(250); // let the first state packets arrive

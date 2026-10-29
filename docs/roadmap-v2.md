@@ -11,9 +11,10 @@ Delivered in phases, each committed with tests. Nothing here is a promise of a s
 | 1 | Progression core: main level + job levels, 5 attributes, 6 jobs x 6 skills, skill library that carries over, 3-6 slot skill bar, status effects, threat, weapon-based auto attacks, telegraphed boss attacks, character window UI | **done** (tests: `smoke-jobs.mjs`) |
 | 2 | Customization + wearables: appearance creator (skin/hair/eyes), 11 equipment slots incl. head/body/legs/boots/gloves/cape/2 rings/amulet, equipment drawn on the character, item affixes | **done** (tests: `smoke-gear.mjs`) |
 | 3 | Bigger world: 256x256 world of 4 islands, chunked rendering, 6 biomes, 3 more towns, 23 more monsters (3 bosses), 15 more quests, per-town shops, world map | **done** incl. the second and third dungeons, The Frozen Depths and The Ember Forge (fire theme, 11 rooms, Vorthak; 29 quests, 34 monsters) (tests: `smoke-world.mjs`, `smoke-frozen.mjs`, `smoke-ember.mjs`) |
-| 4 | UX + scale: world map, quest log, settings/help menu, buff bars, delta-encoded state, spatial grid + sleeping monsters, party loot protection, deploy config | **done** (tests: `smoke-scale.mjs`). Not done: persistent saves on the free host, Colyseus |
+| 4 | UX + scale: world map, quest log, settings/help menu, buff bars, delta-encoded state, spatial grid + sleeping monsters, party loot protection, deploy config | **done** (tests: `smoke-scale.mjs`) |
 | 5 | Content pass: 10 jobs, 3 dungeons (Sunken Crypt, Frozen Depths, Ember Forge), 29 quests with job-flavoured givers in all four towns, item comparison deltas in pack and shop | **done** |
-| - | Shareable URL | needs the owner's go-ahead (see "Hosting" below) |
+| 6 | Persistence, balance and access: Postgres adapter, migration/export tool, shared combat formulas, deterministic balance simulator, login/WS hardening, first-session guide, UI scaling, reduced motion, high contrast and gamepad navigation | **done locally; not deployed** |
+| - | Shareable URL | live Render URL exists; this local branch is intentionally not pushed because a redeploy can reset file-backed heroes |
 
 ## Phase 1 design (multiclassing)
 
@@ -38,8 +39,8 @@ threat table instead of "nearest"; telegraphed ground attacks for bosses; global
 **Migration:** old saves (`cls`, `lvl`) become `job = cls`, job level ~ half the old level, unspent points for the
 levels already earned.
 
-## Hosting (needs owner)
+## Hosting
 
-Making a public link is outward-facing, so it waits for a go-ahead. Options: Railway (matches the owner's other games;
-needs `railway login`), or a temporary tunnel to this PC (fast, but only up while this PC and server are running).
-`Dockerfile` + `railway.json` are already in the repo so either path is one command (see README "Deploy").
+The public Render service tracks `main`. This local branch is ahead and must not be pushed casually: Render auto-deploys,
+and heroes reset unless `DATABASE_URL` is configured. `Dockerfile`, `render.yaml`, `railway.json`, `/api/health`, and
+the persistence instructions in `docs/persistence.md` cover the supported hosting paths.

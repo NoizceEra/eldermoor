@@ -46,7 +46,7 @@ async function bot(name, { delta = false, cls = 'warrior' } = {}) {
     else if (m.t === 'zone') { b.zone = m; b.map = new Map(); } else if (m.t === 'welcome') b.zone = m.zone; else if (m.t === 'err') fail(m.m);
   });
   await new Promise((r) => ws.on('open', r));
-  b.tx({ t: 'login', name, pass: 'x', cls, delta });
+  b.tx({ t: 'login', name, pass: 'test', cls, delta });
   b.pos = () => (b.me ? b.map.get(b.me.id) : undefined);
   if (!(await until(() => b.me && b.pos(), 15000))) fail(`${name}: no me message / first snapshot`);
   b.tp = async (x, y) => {
