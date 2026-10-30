@@ -1530,7 +1530,8 @@ function onMessage(ws, raw) {
       let text = String(m.m || '').replace(/[\u0000-\u001f]/g, '').trim().slice(0, 120);
       if (!text || now - p.chatAt < 600) return;
       p.chatAt = now;
-      if (text === '/who') return log(p, `Online: ${[...players.values()].map((x) => `${x.name} (L${x.lvl})`).join(', ')}`, '#9fd0ff');
+      if (text === '/top') { const live = new Map([...players.values()].map((x) => [x.name.toLowerCase(), x])); const rows = Object.entries(saves).filter(([, r]) => r && r.name && r.lvl).map(([k, r]) => { const s = live.get(k) || r; return { n: r.name, lvl: s.lvl | 0, xp: s.xp | 0, kills: (s.stats && s.stats.kills) | 0 }; }).sort((a, b) => b.lvl - a.lvl || b.xp - a.xp || b.kills - a.kills).slice(0, 5); return log(p, rows.length ? `Top heroes: ${rows.map((r, i) => `${i + 1}. ${r.n} L${r.lvl} (${r.kills} kills)`).join(', ')}` : 'No heroes ranked yet.', '#ffd24a'); }
+      if (text === '/who') return log(p,`Online: ${[...players.values()].map((x) => `${x.name} (L${x.lvl})`).join(', ')}`, '#9fd0ff');
       if (m.ch === 'party') {
         const pt = partyOf(p);
         if (!pt) return log(p, 'You are not in a party.', '#ff8a8a');
