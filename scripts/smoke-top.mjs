@@ -37,6 +37,8 @@ ok(!!line, 'the /top command answers with a ranking');
 ok(line.indexOf('TopAlpha') < line.indexOf('TopBeta'), `the level 30 hero ranks above the level 12 hero (${line})`);
 ok(/TopAlpha L30/.test(line) && /TopBeta L12/.test(line), 'live levels are shown, not the stale saved ones');
 
+B.tx({ t: 'chat', m: '/top kills' }); await wait(700);
+ok(B.lines.some((l) => l.startsWith('Top heroes by kills:')), '/top kills ranks by kills');
 B.tx({ t: 'chat', m: '/inspect topalpha' }); await wait(600);
 const ins = B.lines.find((l) => l.startsWith('TopAlpha'));
 ok(!!ins && /L30 warrior/.test(ins), `/inspect shows another hero's level and job (${ins})`);

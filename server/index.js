@@ -16,6 +16,7 @@ import {
   MAIN_MAX, JOB_MAX, POINTS_PER_LEVEL, JOB_SWITCH_MS, ATTRS, ATTR_BASE, WEAPON_TYPES, JOB_ORDER, JOBS, SKILLS, EFFECTS,
   mainXpNeeded, jobXpNeeded, barSlots, knownSkills, newProgress,
 } from '../shared/jobs.js';
+import { decodeBuildSigil } from '../shared/build-sigil.js';
 import {
   EQ_KEYS, KINDS, PALETTES, STARTER_KIT, emptyEq, eqKeyFor, defaultLook, validLook, kindName, visTokens, LOOK_COST,
 } from '../shared/gear.js';
@@ -615,6 +616,21 @@ function setBar(p, slot, skill) {
   if (at >= 0) p.bar[at] = p.bar[slot]; // dropping an equipped skill on another slot swaps them
   p.bar[slot] = sk;
   p.dirty = true;
+}
+
+function importBuildSigil(p, code) {
+  let build;
+  try { build = decodeBuildSigil(code); }
+  catch { return log(p, 'Build Sigil rejected: invalid code.', '#ff8a8a'); }
+  const slots = barSlots(p.lvl), known = new Set(knownOf(p));
+  for (let i = 0; i < build.skills.length; i++) {
+    const skill = build.skills[i];
+    if (skill && i >= slots) return log(p, `Build Sigil rejected: slot ${i + 1} is locked.`, '#ff8a8a');
+    if (skill && !known.has(skill)) return log(p, `Build Sigil rejected: ${SKILLS[skill].name} is not learned.`, '#ff8a8a');
+  }
+  p.bar = [...build.skills];
+  p.dirty = true;
+  log(p, `Build Sigil equipped (${JOBS[build.job].name}).`, '#8be88b');
 }
 
 // ---- timers (delayed telegraphed hits)
@@ -1526,11 +1542,12 @@ function onMessage(ws, raw) {
       break;
     }
     case 'bar': setBar(p, m.slot | 0, m.skill); break;
+    case 'build': importBuildSigil(p, m.code); break;
     case 'chat': {
       let text = String(m.m || '').replace(/[\u0000-\u001f]/g, '').trim().slice(0, 120);
       if (!text || now - p.chatAt < 600) return;
       p.chatAt = now;
-      if (text === '/top') { const live = new Map([...players.values()].map((x) => [x.name.toLowerCase(), x])); const rows = Object.entries(saves).filter(([, r]) => r && r.name && r.lvl).map(([k, r]) => { const s = live.get(k) || r; return { n: r.name, lvl: s.lvl | 0, xp: s.xp | 0, kills: (s.stats && s.stats.kills) | 0 }; }).sort((a, b) => b.lvl - a.lvl || b.xp - a.xp || b.kills - a.kills).slice(0, 5); return log(p, rows.length ? `Top heroes: ${rows.map((r, i) => `${i + 1}. ${r.n} L${r.lvl} (${r.kills} kills)`).join(', ')}` : 'No heroes ranked yet.', '#ffd24a'); }
+      if (text === '/top' || text === '/top kills') { const byKills = text === '/top kills'; const live = new Map([...players.values()].map((x) => [x.name.toLowerCase(), x])); const rows = Object.entries(saves).filter(([, r]) => r && r.name && r.lvl).map(([k, r]) => { const s = live.get(k) || r; return { n: r.name, lvl: s.lvl | 0, xp: s.xp | 0, kills: (s.stats && s.stats.kills) | 0 }; }).sort((a, b) => (byKills ? b.kills - a.kills : 0) || b.lvl - a.lvl || b.xp - a.xp || b.kills - a.kills).slice(0, 5); return log(p, rows.length ? `Top heroes${byKills ? ' by kills' : ''}: ${rows.map((r, i) => `${i + 1}. ${r.n} L${r.lvl} (${r.kills} kills)`).join(', ')}` : 'No heroes ranked yet.', '#ffd24a'); }
       if (/^\/inspect /.test(text)) { const q = text.slice(9).trim().toLowerCase(); const r = saves[q]; if (!r || !r.name) return log(p, 'No hero by that name.', '#ff8a8a'); const s = [...players.values()].find((x) => x.name.toLowerCase() === q) || r; const t = Object.hasOwn(DEED_BY_ID, s.title) ? ` ${DEED_BY_ID[s.title].title}` : ''; return log(p, `${r.name}${t}: L${s.lvl | 0} ${s.job}, ${Object.keys(s.deeds || {}).length} deeds, ${(s.stats && s.stats.kills) | 0} kills, ${(s.stats && s.stats.quests) | 0} quests`, '#ffd24a'); }
       if (text === '/who') return log(p,`Online: ${[...players.values()].map((x) => `${x.name} (L${x.lvl})`).join(', ')}`, '#9fd0ff');
       if (m.ch === 'party') {

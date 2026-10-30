@@ -2,6 +2,7 @@
 import { W, H, G, O, TOWN, TOWNS, BOSSES, generateWorld, generateDungeon, isSolid, inTown, regionAt } from '/shared/world.js';
 import { SEED, MOBS, QUESTS, RARITY, NPCS } from '/shared/data.js';
 import { JOBS, JOB_ORDER, SKILLS, ATTRS, ATTR_INFO, EFFECTS, skillsOfJob } from '/shared/jobs.js';
+import { encodeBuildSigil } from '/shared/build-sigil.js';
 import { EQ_KEYS, EQ_LABEL, LOOK_LIMITS, LOOK_LABELS, LOOK_COST, SKIN_TONES, HAIR_STYLES, HAIR_COLORS, EYE_COLORS, STARTER_KIT, defaultLook, visTokens, eqKeyFor } from '/shared/gear.js';
 import * as SP from '/client/sprites.js';
 import * as HERO from '/client/hero32.js';
@@ -581,7 +582,7 @@ function sendChat(v) {
     if (t) tx({ t: 'pkick', id: t.id }); else addLine('<span style="color:#ff8a8a">Nobody in your party has that name.</span>');
   } else if (v.startsWith('/p ')) tx({ t: 'chat', m: arg('/p'), ch: 'party' });
   else if (['/wave', '/dance', '/sit', '/cheer'].includes(v)) tx({ t: 'emote', e: v.slice(1) });
-  else if (v === '/help') addLine('<span style="color:#9fd0ff">/invite NAME, /leave, /kick NAME, /p TEXT (party chat), /bounty [claim|drop], /w NAME TEXT (whisper), /r TEXT (reply), /mute NAME, /unmute NAME, /trade NAME, /who, /top, /inspect NAME,/wave /dance /sit /cheer</span>');
+  else if (v === '/help') addLine('<span style="color:#9fd0ff">/invite NAME, /leave, /kick NAME, /p TEXT (party chat), /bounty [claim|drop], /w NAME TEXT (whisper), /r TEXT (reply), /mute NAME, /unmute NAME, /trade NAME, /who, /top [kills],/inspect NAME,/wave /dance /sit /cheer</span>');
   else tx({ t: 'chat', m: v });
 }
 function answerInvite(ok) {
@@ -1039,6 +1040,35 @@ function jobsTab(body) {
   }
 }
 function skillsTab(body) {
+  const sigil = encodeBuildSigil({ job: me.job, skills: me.bar });
+  const build = mkEl('section', 'build-sigil');
+  build.setAttribute('aria-label', 'Build Sigil sharing');
+  const title = mkEl('div', 'build-sigil-title', `<span>BUILD SIGIL</span><b style="color:${JOBS[me.job].color}">${JOBS[me.job].name}</b>`);
+  const preview = mkEl('div', 'build-sigil-preview');
+  for (let i = 0; i < 6; i++) {
+    const id = me.bar[i], chip = mkEl('div', `build-sigil-skill${id ? '' : ' empty'}`);
+    chip.innerHTML = id ? `<img src="${skillURL(id)}" alt=""><span>${esc(SKILLS[id].name)}</span>` : `<span>${i >= me.slots ? `Slot ${i + 1} locked` : 'Empty slot'}</span>`;
+    preview.appendChild(chip);
+  }
+  const code = mkEl('code', 'build-sigil-code', sigil);
+  const copy = mkEl('button', '', 'COPY CODE');
+  copy.type = 'button';
+  copy.onclick = () => copyBuildSigil(sigil);
+  const shareRow = mkEl('div', 'build-sigil-actions'); shareRow.append(code, copy);
+  const input = document.createElement('input');
+  input.type = 'text'; input.maxLength = 240; input.placeholder = 'Paste a friend\'s EM1 code';
+  input.setAttribute('aria-label', 'Paste a Build Sigil');
+  const use = mkEl('button', '', 'EQUIP BUILD');
+  use.type = 'button';
+  use.onclick = () => {
+    const value = input.value.trim();
+    if (!value) return toast('Paste a Build Sigil first.');
+    tx({ t: 'build', code: value });
+  };
+  input.onkeydown = (event) => { if (event.key === 'Enter') use.click(); };
+  const importRow = mkEl('div', 'build-sigil-actions import'); importRow.append(input, use);
+  build.append(title, preview, shareRow, importRow, mkEl('div', 'small', 'Share this code with friends. Importing only equips skills and slots your hero has already earned.'));
+  body.appendChild(build);
   body.appendChild(mkEl('div', 'small', selSkill ? `Now click a bar slot to place <b class="pts">${SKILLS[selSkill].name}</b>.` : 'Pick a learned skill, then click a bar slot. Any job can use any learned skill.'));
   const sbar = mkEl('div', 'sbar');
   for (let i = 0; i < 6; i++) {
@@ -1065,6 +1095,20 @@ function skillsTab(body) {
       body.appendChild(row);
     }
   }
+}
+
+async function copyBuildSigil(code) {
+  try {
+    if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(code);
+    else {
+      const field = document.createElement('textarea');
+      field.value = code; field.style.position = 'fixed'; field.style.opacity = '0';
+      document.body.appendChild(field); field.select();
+      if (!document.execCommand('copy')) throw new Error('copy unavailable');
+      field.remove();
+    }
+    toast('Build Sigil copied!');
+  } catch { toast('Copy failed. Select the code and copy it manually.'); }
 }
 
 function renderQuest() {
