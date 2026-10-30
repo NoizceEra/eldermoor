@@ -1531,6 +1531,7 @@ function onMessage(ws, raw) {
       if (!text || now - p.chatAt < 600) return;
       p.chatAt = now;
       if (text === '/top') { const live = new Map([...players.values()].map((x) => [x.name.toLowerCase(), x])); const rows = Object.entries(saves).filter(([, r]) => r && r.name && r.lvl).map(([k, r]) => { const s = live.get(k) || r; return { n: r.name, lvl: s.lvl | 0, xp: s.xp | 0, kills: (s.stats && s.stats.kills) | 0 }; }).sort((a, b) => b.lvl - a.lvl || b.xp - a.xp || b.kills - a.kills).slice(0, 5); return log(p, rows.length ? `Top heroes: ${rows.map((r, i) => `${i + 1}. ${r.n} L${r.lvl} (${r.kills} kills)`).join(', ')}` : 'No heroes ranked yet.', '#ffd24a'); }
+      if (/^\/inspect /.test(text)) { const q = text.slice(9).trim().toLowerCase(); const r = saves[q]; if (!r || !r.name) return log(p, 'No hero by that name.', '#ff8a8a'); const s = [...players.values()].find((x) => x.name.toLowerCase() === q) || r; const t = Object.hasOwn(DEED_BY_ID, s.title) ? ` ${DEED_BY_ID[s.title].title}` : ''; return log(p, `${r.name}${t}: L${s.lvl | 0} ${s.job}, ${Object.keys(s.deeds || {}).length} deeds, ${(s.stats && s.stats.kills) | 0} kills, ${(s.stats && s.stats.quests) | 0} quests`, '#ffd24a'); }
       if (text === '/who') return log(p,`Online: ${[...players.values()].map((x) => `${x.name} (L${x.lvl})`).join(', ')}`, '#9fd0ff');
       if (m.ch === 'party') {
         const pt = partyOf(p);

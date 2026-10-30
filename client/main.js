@@ -581,7 +581,7 @@ function sendChat(v) {
     if (t) tx({ t: 'pkick', id: t.id }); else addLine('<span style="color:#ff8a8a">Nobody in your party has that name.</span>');
   } else if (v.startsWith('/p ')) tx({ t: 'chat', m: arg('/p'), ch: 'party' });
   else if (['/wave', '/dance', '/sit', '/cheer'].includes(v)) tx({ t: 'emote', e: v.slice(1) });
-  else if (v === '/help') addLine('<span style="color:#9fd0ff">/invite NAME, /leave, /kick NAME, /p TEXT (party chat), /bounty [claim|drop], /w NAME TEXT (whisper), /r TEXT (reply), /mute NAME, /unmute NAME, /trade NAME, /who, /top, /wave /dance /sit /cheer</span>');
+  else if (v === '/help') addLine('<span style="color:#9fd0ff">/invite NAME, /leave, /kick NAME, /p TEXT (party chat), /bounty [claim|drop], /w NAME TEXT (whisper), /r TEXT (reply), /mute NAME, /unmute NAME, /trade NAME, /who, /top, /inspect NAME,/wave /dance /sit /cheer</span>');
   else tx({ t: 'chat', m: v });
 }
 function answerInvite(ok) {
