@@ -9,7 +9,7 @@ import { WebSocketServer } from 'ws';
 import { AttemptLimiter, hashSecret, isAllowedOrigin, securityHeaders, validateNewSecret, verifySecret } from './security.js';
 import { W, G, TOWN, TOWNS, BOSS, BOSSES, CAMP, CAMPS, ISLANDS, inTown, generateWorld, generateDungeon, isSolid } from '../shared/world.js';
 import {
-  SEED, TICK_MS, INV_SIZE, MOBS, QUESTS, RARITY, NPCS,
+  SEED, TICK_MS, INV_SIZE, BANK_SIZE, MOBS, QUESTS, RARITY, NPCS,
   DUNGEONS, PORTAL, PORTAL2, PORTAL3, EXIT_ID,
 } from '../shared/data.js';
 import {
@@ -27,6 +27,8 @@ const SAVE_FILE = process.env.EM_SAVE || path.join(ROOT, 'data', 'saves.json');
 const PORT = Number(process.env.PORT) || 3000;
 const ALLOWED_ORIGINS = process.env.EM_ALLOWED_ORIGINS || '';
 const loginLimiter = new AttemptLimiter();
+const metrics = { peakOnline: 0, connectionsTotal: 0, wsRejected: 0, authFailures: 0, messagesDropped: 0 };
+const tickSamples = [];
 
 // ---------------------------------------------------------------- helpers
 const world = generateWorld(SEED);
@@ -216,16 +218,23 @@ const SHOP_BY = new Map([[2, SHOP], [10, shopStock(22, 2)], [13, shopStock(32, 2
 // ---------------------------------------------------------------- persistence
 const store = await openStore({ file: SAVE_FILE });
 const saves = store.loaded;
+// Item ids are durable ownership identities (trading and banking refer to them), so never
+// restart the allocator below an id already present in a persisted hero record.
+for (const rec of Object.values(saves)) {
+  if (!rec || typeof rec !== 'object') continue;
+  const items = [...(rec.inv || []), ...(rec.bank || []), ...Object.values(rec.eq || {})];
+  for (const it of items) if (it && Number.isSafeInteger(it.u)) uid = Math.max(uid, it.u + 1);
+}
 function writeSaves() { store.flush(); }
 function savePlayer(p) {
   const k = p.name.toLowerCase();
   saves[k] = {
-    v: 3, look: p.look, name: p.name, salt: p.salt, hash: p.hash, job: p.job, jobs: p.jobs, attr: p.attr, points: p.points, bar: p.bar, lvl: p.lvl, xp: p.xp, gold: p.gold,
-    inv: p.inv, eq: p.eq, quest: p.quest, stats: p.stats, deeds: p.deeds, title: p.title, bounty: p.bounty, x: (p.z && p.z.kind !== 'world' ? p.ret : p).x, y: (p.z && p.z.kind !== 'world' ? p.ret : p).y, hp: p.hp,
+    v: 4, look: p.look, name: p.name, salt: p.salt, hash: p.hash, job: p.job, jobs: p.jobs, attr: p.attr, points: p.points, bar: p.bar, lvl: p.lvl, xp: p.xp, gold: p.gold,
+    inv: p.inv, bank: p.bank, eq: p.eq, quest: p.quest, stats: p.stats, deeds: p.deeds, title: p.title, bounty: p.bounty, mutes: p.mutes, x: (p.z && p.z.kind !== 'world' ? p.ret : p).x, y: (p.z && p.z.kind !== 'world' ? p.ret : p).y, hp: p.hp,
   };
   store.put(k, saves[k]);
 }
-// Old saves are upgraded in steps: v1 (class + level) -> v2 (jobs/attributes) -> v3 (11 gear slots + looks).
+// Old saves are upgraded in steps: v1 (class + level) -> v2 (jobs/attributes) -> v3 (11 gear slots + looks) -> v4 (town bank).
 function migrateItem(it) {
   if (!it) return it;
   const o = { ...it };
@@ -254,6 +263,13 @@ function migrate(save) {
     o.inv = (o.inv || []).map(migrateItem);
     o.v = 3;
   }
+  if (!(o.v >= 4)) {
+    o.bank = Array(BANK_SIZE).fill(null);
+    o.mutes = [];
+    o.v = 4;
+  }
+  o.bank = Array.from({ length: BANK_SIZE }, (_, i) => migrateItem(Array.isArray(o.bank) ? o.bank[i] : null) || null);
+  o.mutes = [...new Set((Array.isArray(o.mutes) ? o.mutes : []).map((name) => String(name).trim().toLowerCase()).filter((name) => /^[a-z0-9_ ]{3,14}$/.test(name)))].slice(0, 50);
   o.stats = validStats(o.stats); o.deeds = validDeeds(o.deeds);
   o.title = o.deeds[o.title] ? o.title : '';
   o.bounty = validBounty(o.bounty);
@@ -316,7 +332,7 @@ const power = (p, scale) => combatPower(p.st, p.lvl, scale);
 const meMsg = (p) => ({
   t: 'me', id: p.id, name: p.name, look: p.look, job: p.job, jobs: p.jobs, attr: p.attr, points: p.points, bar: p.bar, slots: barSlots(p.lvl),
   lvl: p.lvl, xp: p.xp, xpn: p.lvl >= MAIN_MAX ? 0 : mainXpNeeded(p.lvl), jxpn: p.jobs[p.job].lvl >= JOB_MAX ? 0 : jobXpNeeded(p.jobs[p.job].lvl),
-  hp: p.hp, mh: p.st.mh, gold: p.gold, inv: p.inv, eq: p.eq, quest: p.quest, stats: p.stats, deeds: p.deeds, title: p.title, bounty: p.bounty,
+  hp: p.hp, mh: p.st.mh, gold: p.gold, inv: p.inv, bank: p.bank, eq: p.eq, quest: p.quest, stats: p.stats, deeds: p.deeds, title: p.title, bounty: p.bounty, mutes: p.mutes,
   st: {
     A: p.st.A, atk: Math.round(power(p, p.st.wt.scale)), def: Math.round(p.st.def), mres: Math.round(p.st.mres), crit: Math.round(p.st.crit * 10) / 10,
     critDmg: Math.round(p.st.critDmg * 100), dodge: Math.round(p.st.dodge * 10) / 10, haste: Math.round(p.st.haste * 100), range: p.st.range,
@@ -332,25 +348,26 @@ async function login(ws, m) {
   const k = name.toLowerCase();
   const limitKey = `${ws.clientIp || 'unknown'}|${k}`;
   const allowed = loginLimiter.check(limitKey);
-  if (!allowed.ok) return send({ ws }, { t: 'err', m: `Too many failed attempts. Try again in ${Math.max(1, Math.ceil(allowed.retryMs / 1000))} seconds.` });
+  if (!allowed.ok) { metrics.authFailures++; return send({ ws }, { t: 'err', m: `Too many failed attempts. Try again in ${Math.max(1, Math.ceil(allowed.retryMs / 1000))} seconds.` }); }
   const saved = saves[k];
   let p;
   if (saved) {
     if (!(await verifySecret(pass, saved.salt, saved.hash))) {
+      metrics.authFailures++;
       loginLimiter.fail(limitKey);
       return send({ ws }, { t: 'err', m: 'Wrong secret word for that hero.' });
     }
     p = { ...migrate(saved), buffs: {}, cd: {}, fx: {} };
   } else {
     const secret = validateNewSecret(pass);
-    if (!secret.ok) { loginLimiter.fail(limitKey); return send({ ws }, { t: 'err', m: secret.message }); }
+    if (!secret.ok) { metrics.authFailures++; loginLimiter.fail(limitKey); return send({ ws }, { t: 'err', m: secret.message }); }
     const job = JOBS[m.cls] ? m.cls : 'warrior';
     const salt = crypto.randomBytes(8).toString('hex');
     const inv = Array(INV_SIZE).fill(null);
     inv[0] = { ...mkPotion(false), c: 3 };
     p = {
-      ...newProgress(job), v: 3, look: validLook(m.look) || defaultLook(name), name, salt, hash: await hashSecret(pass, salt), lvl: 1, xp: 0, gold: 20, inv,
-      eq: starterKit(job), quest: { i: 0, s: 0, p: 0 }, stats: newStats(), deeds: {}, title: '', bounty: null,
+      ...newProgress(job), v: 4, look: validLook(m.look) || defaultLook(name), name, salt, hash: await hashSecret(pass, salt), lvl: 1, xp: 0, gold: 20, inv, bank: Array(BANK_SIZE).fill(null),
+      eq: starterKit(job), quest: { i: 0, s: 0, p: 0 }, stats: newStats(), deeds: {}, title: '', bounty: null, mutes: [],
       x: 0, y: 0, hp: 1, buffs: {}, cd: {}, fx: {},
     };
   }
@@ -370,6 +387,7 @@ async function login(ws, m) {
   if (p.hp <= 0) p.hp = p.st.mh;
   place(p);
   players.set(p.id, p);
+  metrics.peakOnline = Math.max(metrics.peakOnline, players.size);
   ws.player = p;
   send(p, {
     t: 'welcome', id: p.id, seed: SEED, zone: zoneMsg(overworld),
@@ -415,12 +433,14 @@ function partyTick() {
   }
 }
 const findPlayer = (name) => [...players.values()].find((q) => q.name.toLowerCase() === String(name || '').trim().toLowerCase());
+const mutedBy = (listener, speaker) => listener.mutes.includes(speaker.name.toLowerCase());
 function partyInvite(p, name, now) {
   if (now - (p.invAt || 0) < 2000) return;
   p.invAt = now;
   const t = findPlayer(name);
   if (!t) return log(p, 'No hero by that name is online.', '#ff8a8a');
   if (t === p) return log(p, "You can't invite yourself.", '#ff8a8a');
+  if (mutedBy(t, p)) return log(p, 'Unable to invite that hero.', '#ff8a8a');
   const mine = partyOf(p);
   if (mine && mine.leader !== p.id) return log(p, 'Only the party leader can invite.', '#ff8a8a');
   if (mine && mine.members.size >= MAX_PARTY) return log(p, 'Your party is full.', '#ff8a8a');
@@ -1309,6 +1329,7 @@ function tradeRequest(p, name, now) {
   const t = findPlayer(name);
   if (!t) return log(p, 'No hero by that name is online.', '#ff8a8a');
   if (t === p) return log(p, "You can't trade with yourself.", '#ff8a8a');
+  if (mutedBy(t, p)) return log(p, 'Unable to trade with that hero.', '#ff8a8a');
   if (p.trade || t.trade) return log(p, p.trade ? 'You are already trading.' : `${t.name} is already trading.`, '#ff8a8a');
   if (!canTrade(p, t)) return log(p, `${t.name} is too far away.`, '#ff8a8a');
   if (t.tradeInv && t.tradeInv.until > now) return log(p, `${t.name} already has a trade request.`, '#ff8a8a');
@@ -1421,16 +1442,16 @@ function onMessage(ws, raw) {
   if (m.t === 'login') {
     if (!ws.player && !ws.authPending) {
       ws.authPending = true;
-      login(ws, m).catch(() => send({ ws }, { t: 'err', m: 'Login failed. Please try again.' })).finally(() => { ws.authPending = false; });
+      login(ws, m).catch(() => { metrics.authFailures++; send({ ws }, { t: 'err', m: 'Login failed. Please try again.' }); }).finally(() => { ws.authPending = false; });
     }
     return;
   }
   const p = ws.player;
   if (!p || !players.has(p.id)) return;
-  if (++p.msgs > 400) return; // flood guard, reset every second
+  if (++p.msgs > 400) { metrics.messagesDropped++; return; } // flood guard, reset every second
   const now = Date.now();
   // anything that changes the pack is frozen while a trade is open (the swap re-validates anyway)
-  if (p.trade && ['drop', 'sell', 'equip', 'unequip', 'use', 'buy'].includes(m.t)) return log(p, 'Finish or cancel your trade first.', '#ff8a8a');
+  if (p.trade && ['drop', 'sell', 'equip', 'unequip', 'use', 'buy', 'bank_deposit', 'bank_withdraw'].includes(m.t)) return log(p, 'Finish or cancel your trade first.', '#ff8a8a');
   switch (m.t) {
     case 'move': {
       if (p.dead) return;
@@ -1474,11 +1495,31 @@ function onMessage(ws, raw) {
       p.title = id; p.dirty = true;
       break;
     }
+    case 'mute': {
+      const name = String(m.name || '').trim().toLowerCase();
+      if (!/^[a-z0-9_ ]{3,14}$/.test(name)) return log(p, 'Enter a valid hero name to mute.', '#ff8a8a');
+      if (name === p.name.toLowerCase()) return log(p, 'You cannot mute yourself.', '#ff8a8a');
+      if (!p.mutes.includes(name)) {
+        if (p.mutes.length >= 50) return log(p, 'Your mute list is full.', '#ff8a8a');
+        p.mutes.push(name); p.dirty = true; savePlayer(p); writeSaves();
+      }
+      log(p, `${String(m.name).trim()} muted.`, '#9fd0ff');
+      break;
+    }
+    case 'unmute': {
+      const name = String(m.name || '').trim().toLowerCase();
+      const before = p.mutes.length;
+      p.mutes = p.mutes.filter((x) => x !== name);
+      if (p.mutes.length !== before) { p.dirty = true; savePlayer(p); writeSaves(); }
+      log(p, `${String(m.name || '').trim() || 'Hero'} unmuted.`, '#9fd0ff');
+      break;
+    }
     case 'whisper': {
       const text = String(m.m || '').replace(/[\u0000-\u001f]/g, '').trim().slice(0, 120);
       if (!text || now - p.chatAt < 600) return;
       const to = [...players.values()].find((x) => x.name.toLowerCase() === String(m.to || '').trim().toLowerCase());
       if (!to || to === p) return log(p, to ? 'You cannot whisper yourself.' : 'Nobody by that name is online.', '#ff8a8a');
+      if (mutedBy(to, p)) return log(p, 'Unable to whisper that hero.', '#ff8a8a');
       p.chatAt = now;
       send(to, { t: 'chat', n: p.name, m: text, id: p.id, ch: 'w', dir: 'from' });
       send(p, { t: 'chat', n: to.name, m: text, id: p.id, ch: 'w', dir: 'to' });
@@ -1493,10 +1534,10 @@ function onMessage(ws, raw) {
       if (m.ch === 'party') {
         const pt = partyOf(p);
         if (!pt) return log(p, 'You are not in a party.', '#ff8a8a');
-        for (const id of pt.members) { const o = players.get(id); if (o) send(o, { t: 'chat', n: p.name, m: text, id: p.id, ch: 'party' }); }
+        for (const id of pt.members) { const o = players.get(id); if (o && !mutedBy(o, p)) send(o, { t: 'chat', n: p.name, m: text, id: p.id, ch: 'party' }); }
         break;
       }
-      for (const o of players.values()) send(o, { t: 'chat', n: p.name, m: text, id: p.id });
+      for (const o of players.values()) if (!mutedBy(o, p)) send(o, { t: 'chat', n: p.name, m: text, id: p.id });
       break;
     }
     case 'pinvite': partyInvite(p, m.name, now); break;
@@ -1545,6 +1586,26 @@ function onMessage(ws, raw) {
       p.gold += gold; p.inv[m.slot | 0] = null; p.dirty = true;
       log(p, `Sold ${it.n} for ${gold} gold.`, '#ffd23a');
       send(p, { t: 'ev', e: 'coin' });
+      break;
+    }
+    case 'bank_deposit': {
+      if (!safeAt(p.z, p.x, p.y)) return log(p, 'The town bank is only available inside a town.', '#ff8a8a');
+      const i = Number(m.slot);
+      if (!Number.isInteger(i) || i < 0 || i >= p.inv.length || !p.inv[i]) return;
+      const to = p.bank.indexOf(null);
+      if (to < 0) return log(p, 'Your bank is full.', '#ff8a8a');
+      p.bank[to] = p.inv[i]; p.inv[i] = null; p.dirty = true;
+      savePlayer(p); writeSaves();
+      break;
+    }
+    case 'bank_withdraw': {
+      if (!safeAt(p.z, p.x, p.y)) return log(p, 'The town bank is only available inside a town.', '#ff8a8a');
+      const i = Number(m.slot);
+      if (!Number.isInteger(i) || i < 0 || i >= p.bank.length || !p.bank[i]) return;
+      const to = p.inv.indexOf(null);
+      if (to < 0) return log(p, 'Your pack is full.', '#ff8a8a');
+      p.inv[to] = p.bank[i]; p.bank[i] = null; p.dirty = true;
+      savePlayer(p); writeSaves();
       break;
     }
     case 'equip': {
@@ -1692,7 +1753,10 @@ function tick() {
   if (tickN % 10 === 0) checkTrades();
   if (tickN % 2 === 0) broadcast(now);
   if (tickN % 10 === 0) partyTick();
-  tickMs = tickMs * 0.95 + (performance.now() - t0) * 0.05;
+  const elapsed = performance.now() - t0;
+  tickMs = tickMs * 0.95 + elapsed * 0.05;
+  tickSamples.push(elapsed);
+  if (tickSamples.length > 1200) tickSamples.shift(); // one minute at 20 ticks/s
 }
 
 // ---------------------------------------------------------------- http + ws
@@ -1707,8 +1771,16 @@ const server = http.createServer((req, res) => {
     return res.end(JSON.stringify({ ok, store: store.kind, queuedSaves: store.pendingCount || 0, uptime: Math.round(process.uptime()) }));
   }
   if (url === '/api/status') {
+    const sortedTicks = [...tickSamples].sort((a, b) => a - b);
+    const tickP95Ms = sortedTicks.length ? sortedTicks[Math.max(0, Math.ceil(sortedTicks.length * 0.95) - 1)] : 0;
     res.writeHead(200, { 'content-type': 'application/json' });
-    return res.end(JSON.stringify({ name: 'eldermoor', online: players.size, parties: parties.size, instances: instances.size, trades: trades.size, mobs: liveMobs(overworld).length, awake: awakeMobs, tickMs: Math.round(tickMs * 100) / 100, uptime: Math.round(process.uptime()), store: store.kind, storeOk: store.ok }));
+    return res.end(JSON.stringify({
+      name: 'eldermoor', online: players.size, peakOnline: metrics.peakOnline, connectionsTotal: metrics.connectionsTotal,
+      wsRejected: metrics.wsRejected, authFailures: metrics.authFailures, messagesDropped: metrics.messagesDropped,
+      parties: parties.size, instances: instances.size, trades: trades.size, mobs: liveMobs(overworld).length, awake: awakeMobs,
+      tickMs: Math.round(tickMs * 100) / 100, tickP95Ms: Math.round(tickP95Ms * 100) / 100,
+      uptime: Math.round(process.uptime()), store: store.kind, storeOk: store.ok, queuedSaves: store.pendingCount || 0,
+    }));
   }
   if (!url.startsWith('/client/') && !url.startsWith('/shared/')) { res.writeHead(404); return res.end('not found'); }
   const file = path.join(ROOT, url);
@@ -1726,10 +1798,12 @@ const wss = new WebSocketServer({
   verifyClient(info, done) {
     const host = String(info.req.headers['x-forwarded-host'] || info.req.headers.host || '');
     const allowed = isAllowedOrigin(info.origin, host, ALLOWED_ORIGINS);
+    if (!allowed) metrics.wsRejected++;
     done(allowed, allowed ? undefined : 403, allowed ? undefined : 'Cross-origin WebSocket rejected');
   },
 });
 wss.on('connection', (ws, req) => {
+  metrics.connectionsTotal++;
   ws.clientIp = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown').split(',')[0].trim();
   ws.on('message', (d) => onMessage(ws, d.toString()));
   ws.on('close', () => { if (ws.player) dropPlayer(ws.player); });

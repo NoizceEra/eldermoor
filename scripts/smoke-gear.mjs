@@ -143,6 +143,8 @@ ok(JSON.stringify(A2.me.look) === '[1,2,3,4,2,5]' && A2.me.eq.head && A2.me.eq.a
 
 // ---------------------------------------------------------------- migration of a v2 save
 const L = await bot('Legacy');
+ok(Array.isArray(L.me.bank) && L.me.bank.length === 40 && L.me.bank.every((it) => it === null), 'a pre-bank save migrates to an empty 40-slot bank');
+ok(Array.isArray(L.me.mutes) && L.me.mutes.length === 0, 'a legacy save gains an empty mute list');
 ok(L.me.eq.weapon.u === 901 && L.me.eq.body && L.me.eq.body.u === 902 && L.me.eq.body.s === 'body', 'old armor slot migrates to the body slot');
 ok(L.me.eq.amulet && L.me.eq.amulet.u === 903 && L.me.eq.ring1 === null, 'old trinket migrates to the right slot (amulet)');
 ok(L.me.inv[0] && L.me.inv[0].u === 900 && L.me.inv[0].s === 'body' && KINDS.body.some((k) => k.b === L.me.inv[0].b), 'old armor items in the pack become body items');

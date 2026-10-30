@@ -28,12 +28,13 @@ Open the URL in several tabs to play together. Heroes persist in `data/saves.jso
 | Q | health potion |
 | Space / Tab | target nearest enemy |
 | E | talk to nearest NPC |
-| I | pack (right-click or double-click to equip/use; open the shop to sell) |
+| I | pack (right-click or double-click to equip/use; open the shop to sell or the town bank to store gear) |
 | Enter | chat (`/who`, `/help`) |
 | Click another hero | menu: party invite or trade (Y / N answers a request) |
 | `/invite NAME`, `/leave`, `/kick NAME`, `/p TEXT` | party commands and party chat |
 | `/trade NAME` | start a trade |
-| M | mute |
+| `/mute NAME`, `/unmute NAME` | persistently hide or restore that hero's chat, whispers and requests |
+| M | toggle game audio |
 
 **Gamepad:** left stick / D-pad moves; A/Cross interacts; X/Square targets; Y/Triangle uses a potion; LB/RB/LT/RT/L3/R3 trigger skills 1-6; View opens the map; Menu opens settings. D-pad and A/Cross also navigate every open menu.
 
@@ -55,7 +56,8 @@ The Menu also includes interface scaling, high contrast, reduced-motion support,
 - Regional shops, a 29-step quest journey, global chat, day/night with torchlight, ambient music and social emotes.
 - Parties of up to 4: shared XP (with a group bonus) and quest credit for everyone in range, party frames, minimap dots, party chat.
 - **Player trading**: both sides offer up to 6 items + gold, both lock, both confirm. Any change unlocks everyone; the swap re-validates ownership, gold, range and pack space on the server, and cancels cleanly on disconnect, death, zone change or distance. Pack changes are frozen mid-trade.
-- **Built to scale on a small server**: monsters live in a spatial grid, monsters far from every player sleep (an idle world costs about 0.1 ms per tick), and the browser client receives only the entities that changed (about 4% of the bandwidth of full snapshots in a busy meadow). Fresh loot is reserved for the heroes and parties who fought for it for 8 seconds (15 for bosses).
+- **Town bank and social safety**: every hero has 40 persistent bank slots available inside towns. Deposits and withdrawals move server-owned item identities without copying them. Persistent mutes cover public/party chat, whispers, party invites and trade requests.
+- **Built to scale on a small server**: monsters live in a spatial grid, monsters far from every player sleep (an idle world costs about 0.1 ms per tick), and the browser client receives only the entities that changed (about 4% of the bandwidth of full snapshots in a busy meadow). Fresh loot is reserved for the heroes and parties who fought for it for 8 seconds (15 for bosses). `/api/status` exposes current/peak concurrency, accepted and rejected sockets, auth failures, flood drops, save backlog, and recent tick p95.
 - Server-authoritative: movement, combat, loot and economy all validated server-side.
 - **Durable and hardened hosting path**: file saves locally or batched Postgres saves when `DATABASE_URL` is set; asynchronous timing-safe secret verification, login throttling, same-origin WebSockets, security headers, and `/api/health` readiness reporting.
 
@@ -73,7 +75,7 @@ scripts/          security/input/UI/store units plus headless end-to-end and bal
 
 ## Ideas next
 
-A bank, crafting and salvage, stable quest IDs with multiple active quests, friends/guilds with block/report tools, player-vs-player arenas, mounts, and larger automated load tests.
+Crafting and salvage, stable quest IDs with multiple active quests, friends/guilds with report tools, player-vs-player arenas, mounts, and larger soak/load tests.
 
 ## Deploy (shareable link)
 

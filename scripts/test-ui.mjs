@@ -17,5 +17,12 @@ ok(/--ui-scale/.test(css) && /uiScale/.test(main), 'players can scale the interf
 ok(/showTutorial/.test(main) && /em_tutorial_v1/.test(main), 'the onboarding flow is persisted after completion');
 ok(/#login\s*\{[^}]*overflow-y:\s*auto/.test(css), 'the tall creator can scroll instead of clipping');
 ok(/@media\s*\(max-width:\s*600px\)[\s\S]*?grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/.test(css), 'the class grid becomes two columns on narrow screens');
+ok(/id="bank"[^>]*role="dialog"[^>]*aria-labelledby="bankTitle"/.test(html), 'the bank is exposed as an accessible dialog');
+ok(/id="bankSlots"/.test(html) && /renderBank/.test(main), 'the bank has a rendered 40-slot item grid');
+ok(/bank_deposit/.test(main) && /bank_withdraw/.test(main), 'bank actions request server-authoritative item moves');
+ok(/d\.onkeydown[\s\S]*?Enter[\s\S]*?' '/.test(main), 'keyboard users can activate focused bank slots');
+ok(/body\.touch #bank/.test(css), 'the bank remains usable in touch mode');
+ok(/\/mute/.test(main) && /\/unmute/.test(main), 'chat exposes mute and unmute commands');
+ok(/muteAction/.test(main) && /a === 'mute' \|\| a === 'unmute'/.test(main), 'the nearby-player menu offers a direct mute toggle');
 
 console.log('UI CONTRACT OK');

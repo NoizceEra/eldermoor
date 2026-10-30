@@ -63,11 +63,17 @@
     <input id="chatIn" maxlength="120" placeholder="Press Enter to chat" autocomplete="off" aria-label="Chat message">
   </div>
   <div id="inv" class="panel hidden">
-    <div class="row"><b>Pack</b><canvas id="invPrev" width="32" height="32"></canvas><button class="x" data-close="inv">x</button></div>
+    <div class="row"><b>Pack</b><canvas id="invPrev" width="32" height="32"></canvas><button id="openBank" title="The bank is available inside towns">BANK</button><button class="x" data-close="inv">x</button></div>
     <div id="equip"></div>
     <div id="slots"></div>
     <div class="small" id="invGold"></div>
     <div id="itemInfo" class="small"></div>
+  </div>
+  <div id="bank" class="panel hidden" role="dialog" aria-labelledby="bankTitle">
+    <div class="row"><b id="bankTitle">Town Bank</b><span id="bankCount" class="small"></span><button class="x" data-close="bank">x</button></div>
+    <div class="bankSection"><b>Pack</b><div id="bankPackSlots"></div></div>
+    <div class="bankSection"><b>Bank · 40 slots</b><div id="bankSlots"></div></div>
+    <div id="bankInfo" class="small">Select an item to move it.</div>
   </div>
   <div id="dialog" class="panel hidden"></div>
   <div id="touch">

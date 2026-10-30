@@ -4,6 +4,7 @@ export const SEED = 20261028;
 export const TICK_MS = 50;
 export const MAX_LEVEL = 60;
 export const INV_SIZE = 20;
+export const BANK_SIZE = 40;
 export const DUNGEON_SEED = 777;
 export const DUNGEON_REC_LVL = 14;
 export const PORTAL_ID = 5, EXIT_ID = 6;

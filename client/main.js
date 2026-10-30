@@ -49,7 +49,7 @@ let potReady = 0;
 let goal = null, nextStep = 0, shake = 0;
 const keys = new Set();
 let camX = 0, camY = 0;
-let selClass = 'warrior',  selSlot = -1, shopOpen = false, dialogNpc = 0;
+let selClass = 'warrior', selSlot = -1, bankSel = null, shopOpen = false, dialogNpc = 0;
 const chatLines = [];
 let party = { id: 0, leader: 0, members: [] };
 const pmData = new Map(); // member id -> { h, mh, x, y } from the server's party tick
@@ -421,7 +421,7 @@ function runKeys(t) {
 // ------------------------------------------------------------------ input
 let gamepadButtons = [], gamepadHeld = new Set();
 function gamepadPanel() {
-  for (const id of ['tutorial', 'invite', 'trade', 'dialog', 'char', 'inv', 'worldmap', 'qlog', 'menu']) {
+  for (const id of ['tutorial', 'invite', 'trade', 'dialog', 'bank', 'char', 'inv', 'worldmap', 'qlog', 'menu']) {
     const panel = $(id);
     if (panel && !panel.classList.contains('hidden')) return panel;
   }
@@ -459,7 +459,7 @@ function gamepadAction(action) {
     if (escapeMenu()) return;
     $('worldmap').classList.add('hidden');
     if (tradeView) tx({ t: 'trade_cancel' });
-    closeDialog(); $('inv').classList.add('hidden'); $('char').classList.add('hidden');
+    closeDialog(); $('bank').classList.add('hidden'); $('inv').classList.add('hidden'); $('char').classList.add('hidden');
     tx({ t: 'target', id: 0 }); goal = null;
   }
 }
@@ -553,7 +553,7 @@ addEventListener('keydown', (e) => {
   else if (k === 'm') { muted = !muted; localStorage.setItem('em_mute', muted ? '1' : '0'); toast(muted ? 'Sound off' : 'Sound on'); }
   else if (k === 'tab' || k === ' ') cycleTarget();
   else if ((k === 'y' || k === 'n') && pendingInvite && !pendingInvite.menu) answerInvite(k === 'y');
-  else if (k === 'escape') { if (escapeMenu()) return; $('worldmap').classList.add('hidden'); if (pendingInvite && pendingInvite.menu) { pendingInvite = null; showInvite(); } if (tradeView) tx({ t: 'trade_cancel' }); closeDialog(); $('inv').classList.add('hidden'); tx({ t: 'target', id: 0 }); goal = null; }
+  else if (k === 'escape') { if (escapeMenu()) return; $('worldmap').classList.add('hidden'); if (pendingInvite && pendingInvite.menu) { pendingInvite = null; showInvite(); } if (tradeView) tx({ t: 'trade_cancel' }); closeDialog(); $('bank').classList.add('hidden'); $('inv').classList.add('hidden'); tx({ t: 'target', id: 0 }); goal = null; }
 });
 addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
 addEventListener('blur', () => keys.clear());
@@ -563,6 +563,8 @@ let lastWhisper = '';
 function sendChat(v) {
   const arg = (cmd) => v.slice(cmd.length).trim();
   if (v.startsWith('/invite ')) tx({ t: 'pinvite', name: arg('/invite') });
+  else if (v.startsWith('/mute ')) tx({ t: 'mute', name: arg('/mute') });
+  else if (v.startsWith('/unmute ')) tx({ t: 'unmute', name: arg('/unmute') });
   else if (v === '/leave') tx({ t: 'pleave' });
   else if (/^\/bounty( |$)/.test(v)) tx({ t: 'bounty', a: arg('/bounty') || 'take' });
   else if (/^\/(w|whisper|tell) /.test(v)) {
@@ -579,7 +581,7 @@ function sendChat(v) {
     if (t) tx({ t: 'pkick', id: t.id }); else addLine('<span style="color:#ff8a8a">Nobody in your party has that name.</span>');
   } else if (v.startsWith('/p ')) tx({ t: 'chat', m: arg('/p'), ch: 'party' });
   else if (['/wave', '/dance', '/sit', '/cheer'].includes(v)) tx({ t: 'emote', e: v.slice(1) });
-  else if (v === '/help') addLine('<span style="color:#9fd0ff">/invite NAME, /leave, /kick NAME, /p TEXT (party chat), /bounty [claim|drop], /w NAME TEXT (whisper), /r TEXT (reply), /trade NAME, /who, /wave /dance /sit /cheer</span>');
+  else if (v === '/help') addLine('<span style="color:#9fd0ff">/invite NAME, /leave, /kick NAME, /p TEXT (party chat), /bounty [claim|drop], /w NAME TEXT (whisper), /r TEXT (reply), /mute NAME, /unmute NAME, /trade NAME, /who, /wave /dance /sit /cheer</span>');
   else tx({ t: 'chat', m: v });
 }
 function answerInvite(ok) {
@@ -595,13 +597,15 @@ function showInvite() {
   if (!inv) { box.classList.add('hidden'); return; }
   const nm = `<b style="color:#6ab8ff">${esc(inv.name)}</b>`;
   if (inv.menu) {
-    box.innerHTML = `<div>${nm}</div><div class="btns"><button data-a="party">Party invite</button><button data-a="trade">Trade</button><button data-a="no">Cancel</button></div>`;
+    const muted = !!me?.mutes?.includes(inv.name.toLowerCase()), muteAction = muted ? 'unmute' : 'mute';
+    box.innerHTML = `<div>${nm}</div><div class="btns"><button data-a="party">Party invite</button><button data-a="trade">Trade</button><button data-a="${muteAction}">${muted ? 'Unmute' : 'Mute'}</button><button data-a="no">Cancel</button></div>`;
     box.querySelectorAll('button').forEach((bt) => {
       bt.onclick = () => {
         const a = bt.dataset.a;
         pendingInvite = null; showInvite();
         if (a === 'party') tx({ t: 'pinvite', name: inv.name });
         else if (a === 'trade') tx({ t: 'trade_req', name: inv.name });
+        else if (a === 'mute' || a === 'unmute') tx({ t: a, name: inv.name });
       };
     });
   } else {
@@ -708,7 +712,7 @@ function toggleMenu() { $('qlog').classList.add('hidden'); $('menu').classList.t
 function toggleQlog() { $('menu').classList.add('hidden'); $('qlog').classList.toggle('hidden'); if (isOpen('qlog')) renderQlog(); }
 function escapeMenu() {
   for (const id of ['menu', 'qlog']) if (isOpen(id)) { $(id).classList.add('hidden'); return true; }
-  const open = ['inv', 'char', 'dialog', 'worldmap', 'trade'].some(isOpen);
+  const open = ['inv', 'bank', 'char', 'dialog', 'worldmap', 'trade'].some(isOpen);
   if (!open && !(me && me.tg) && !goal) { toggleMenu(); return true; }
   return false;
 }
@@ -935,6 +939,7 @@ function onMe() {
   $('death').classList.toggle('hidden', me.hp > 0);
   renderQuest();
   if (!$('inv').classList.contains('hidden')) renderInv();
+  if (!$('bank').classList.contains('hidden')) renderBank();
   if (tradeView) renderTrade();
   renderChar();
   if (isOpen('qlog')) renderQlog();
@@ -1145,6 +1150,49 @@ function renderInv() {
   if (it) showInfo(it, () => primary(selSlot), it.s === 'potion' ? 'Drink' : 'Equip', selSlot);
   else if (selSlot < 0 && !$('itemInfo').dataset.keep) $('itemInfo').innerHTML = '<span class="small">Select an item.</span>';
 }
+const bankAvailable = () => {
+  const self = ents.get(myId);
+  return zoneKind === 'world' && !!self && inTown(self.x, self.y);
+};
+function renderBank() {
+  if (!me || !Array.isArray(me.bank)) return;
+  const draw = (id, items, side) => {
+    const grid = $(id); grid.innerHTML = '';
+    items.forEach((it, slot) => {
+      const d = slotEl(it);
+      d.tabIndex = 0; d.setAttribute('role', 'button');
+      d.setAttribute('aria-label', it ? `${it.n}, ${side === 'pack' ? 'in pack' : 'in bank'}` : `Empty ${side} slot ${slot + 1}`);
+      if (bankSel && bankSel.side === side && bankSel.slot === slot) d.classList.add('sel');
+      d.onclick = () => { bankSel = { side, slot }; renderBank(); };
+      d.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); d.click(); } };
+      if (it) {
+        const move = () => tx({ t: side === 'pack' ? 'bank_deposit' : 'bank_withdraw', slot });
+        d.ondblclick = move;
+        d.oncontextmenu = (e) => { e.preventDefault(); move(); };
+      }
+      grid.appendChild(d);
+    });
+  };
+  draw('bankPackSlots', me.inv, 'pack');
+  draw('bankSlots', me.bank, 'bank');
+  $('bankCount').textContent = `${me.bank.filter(Boolean).length}/${me.bank.length} used`;
+  const it = bankSel && (bankSel.side === 'pack' ? me.inv : me.bank)[bankSel.slot];
+  const info = $('bankInfo'); info.innerHTML = it ? itemTip(it, bankSel.side === 'pack') : 'Select an item to move it.';
+  if (it) {
+    const b = document.createElement('button');
+    b.textContent = bankSel.side === 'pack' ? 'Deposit' : 'Withdraw';
+    b.onclick = () => tx({ t: bankSel.side === 'pack' ? 'bank_deposit' : 'bank_withdraw', slot: bankSel.slot });
+    info.appendChild(b);
+  }
+}
+function toggleBank() {
+  const box = $('bank');
+  if (!box.classList.contains('hidden')) { box.classList.add('hidden'); return; }
+  if (!bankAvailable()) return toast('The town bank is available inside towns.');
+  bankSel = null; box.classList.remove('hidden');
+  if (touchMode) $('inv').classList.add('hidden');
+  renderBank();
+}
 function primary(i) {
   const it = me.inv[i]; if (!it) return;
   tx(it.s === 'potion' ? { t: 'use', slot: i } : { t: 'equip', slot: i });
@@ -1166,6 +1214,7 @@ function toggleInv() {
   $('inv').classList.toggle('hidden');
   if (!$('inv').classList.contains('hidden') && me) renderInv();
 }
+$('openBank').addEventListener('click', toggleBank);
 document.addEventListener('click', (e) => { const c = e.target.dataset && e.target.dataset.close; if (c) $(c).classList.add('hidden'); });
 
 // ---- dialog
